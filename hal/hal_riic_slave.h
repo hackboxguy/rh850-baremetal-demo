@@ -1,5 +1,12 @@
 /*
  * hal_riic_slave.h - RIIC0 hardware I2C slave driver (interrupt-driven)
+ *
+ * 16-bit sub-addressing (EEPROM-style, 24C256/24C512 compatible):
+ *   Write: [slave+W] [addr_hi] [addr_lo] [data0] [data1] ...
+ *   Read:  [slave+W] [addr_hi] [addr_lo] [slave+R] [data0] ...
+ *   Current-address read: [slave+R] [data0] ... (continues from last addr)
+ *
+ * Address auto-increments after each byte and wraps at 0xFFFF -> 0x0000.
  */
 
 #ifndef HAL_RIIC_SLAVE_H
@@ -7,9 +14,9 @@
 
 #include "dr7f701686.dvf.h"
 
-/* Application callbacks for I2C slave register access */
-typedef void    (*hal_riic_slave_write_cb)(uint8 reg_addr, uint8 value);
-typedef uint8   (*hal_riic_slave_read_cb)(uint8 reg_addr);
+/* Application callbacks for I2C slave register access (16-bit address) */
+typedef void    (*hal_riic_slave_write_cb)(uint16 reg_addr, uint8 value);
+typedef uint8   (*hal_riic_slave_read_cb)(uint16 reg_addr);
 
 /*
  * Initialize RIIC0 as I2C slave.

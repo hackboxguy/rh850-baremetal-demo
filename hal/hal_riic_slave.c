@@ -1,9 +1,12 @@
 /*
  * hal_riic_slave.c - RIIC0 hardware I2C slave driver (interrupt-driven)
  *
- * Interrupt-driven slave with register-based protocol.
- * Master sends: [slave_addr+W] [reg_addr] [data...]
- * Master reads: [slave_addr+W] [reg_addr] [slave_addr+R] [data...]
+ * 16-bit sub-addressing (EEPROM-style, 24C256/24C512 compatible):
+ *   Write: [slave+W] [addr_hi] [addr_lo] [data0] [data1] ...
+ *   Read:  [slave+W] [addr_hi] [addr_lo] [slave+R] [data0] ...
+ *   Current-address read: [slave+R] [data0] ... (uses last set addr)
+ *
+ * Address auto-increments after each byte and wraps at 0xFFFF -> 0x0000.
  *
  * Pin config: P10_2 (SDA), P10_3 (SCL), AF2 with open-drain + PBDC.
  * Proven working on 983HH board with PLL at 40 MHz PPLLCLK2.
@@ -42,16 +45,27 @@
 #define SR2_START   0x04u
 #define SR2_AL      0x02u
 
-/* Slave state machine */
+/*
+ * Slave state machine (16-bit address):
+ *
+ *   IDLE -> (address match, master WRITE) -> ADDR_HI
+ *        -> (address match, master READ)  -> SENDING_DATA (current-addr read)
+ *
+ *   ADDR_HI -> (receive addr_hi byte) -> ADDR_LO
+ *   ADDR_LO -> (receive addr_lo byte) -> RECEIVING_DATA
+ *
+ *   RECEIVING_DATA -> (receive data bytes, auto-increment, wrap at 0xFFFF)
+ *   SENDING_DATA   -> (transmit data bytes via TI ISR, auto-increment)
+ */
 #define ST_IDLE             0u
-#define ST_ADDR_RECEIVED    1u
-#define ST_RECEIVING_DATA   2u
-#define ST_SENDING_DATA     3u
-#define ST_SEND_DONE        4u
+#define ST_ADDR_HI          1u
+#define ST_ADDR_LO          2u
+#define ST_RECEIVING_DATA   3u
+#define ST_SENDING_DATA     4u
+#define ST_SEND_DONE        5u
 
-static volatile uint8 g_slave_state;
-static volatile uint8 g_reg_addr;
-static volatile uint8 g_reg_addr_set;
+static volatile uint8  g_slave_state;
+static volatile uint16 g_reg_addr;      /* 16-bit register address */
 
 static hal_riic_slave_write_cb g_on_write;
 static hal_riic_slave_read_cb  g_on_read;
@@ -161,10 +175,9 @@ void hal_riic_slave_init(uint8 slave_addr,
     { volatile uint32 sync = RIIC0.MR1.UINT32; (void)sync; }
     __nop();
 
-    /* Init state */
-    g_slave_state  = ST_IDLE;
-    g_reg_addr     = 0u;
-    g_reg_addr_set = 0u;
+    /* Init state — address starts at 0x0000 (EEPROM power-on default) */
+    g_slave_state = ST_IDLE;
+    g_reg_addr    = 0x0000u;
 
     /* Clear flags and unmask RIIC0 interrupts */
     ICRIIC0TI  &= ~ICR_RF;
@@ -182,22 +195,26 @@ void hal_riic_slave_init(uint8 slave_addr,
 /*
  * TI interrupt (ch76): Transmit Data Empty
  * Fired when master reads additional bytes after the first.
+ * Auto-increments address with 16-bit wrap.
  */
 #pragma interrupt hal_riic0_isr_ti(enable=false, channel=76, fpu=true, callt=false)
 void hal_riic0_isr_ti(void)
 {
     uint8 val = 0xFFu;
 
-    if (g_on_read && g_reg_addr < 0xFFu)
+    if (g_on_read)
         val = g_on_read(g_reg_addr);
 
     RIIC0.DRT.UINT32 = (uint32)val;
-    g_reg_addr++;
+    g_reg_addr++;               /* 16-bit wrap at 0xFFFF -> 0x0000 */
     g_slave_state = ST_SEND_DONE;
 }
 
 /*
  * EE interrupt (ch77): Error/Event (START, STOP, NACK, AL)
+ *
+ * Note: g_reg_addr is NOT reset on STOP — this preserves the
+ * current address for EEPROM-style current-address reads.
  */
 #pragma interrupt hal_riic0_isr_ee(enable=false, channel=77, fpu=true, callt=false)
 void hal_riic0_isr_ee(void)
@@ -213,8 +230,7 @@ void hal_riic0_isr_ee(void)
     {
         (void)RIIC0.DRR.UINT32;        /* Dummy read */
         RIIC0.SR2.UINT32 &= ~(uint32)SR2_NACKF;
-        g_slave_state  = ST_IDLE;
-        g_reg_addr_set = 0u;
+        g_slave_state = ST_IDLE;
     }
 
     if (sr2 & SR2_STOP)
@@ -223,8 +239,7 @@ void hal_riic0_isr_ee(void)
         /* Don't reset state if RDRF pending (STOP+RDRF race) */
         if (!(sr2 & SR2_RDRF))
         {
-            g_slave_state  = ST_IDLE;
-            g_reg_addr_set = 0u;
+            g_slave_state = ST_IDLE;
         }
     }
 
@@ -237,7 +252,12 @@ void hal_riic0_isr_ee(void)
 
 /*
  * RI interrupt (ch78): Receive Data Full
- * Handles address match, register address byte, and data bytes.
+ *
+ * Handles:
+ *   - Address match (AAS0): start new transaction
+ *   - Addr high byte: store upper 8 bits of 16-bit address
+ *   - Addr low byte:  store lower 8 bits, address now fully set
+ *   - Data bytes:     write to register via callback, auto-increment
  */
 #pragma interrupt hal_riic0_isr_ri(enable=false, channel=78, fpu=true, callt=false)
 void hal_riic0_isr_ri(void)
@@ -253,27 +273,27 @@ void hal_riic0_isr_ri(void)
 
         if (RIIC0.CR2.UINT32 & 0x20u)
         {
-            /* Master READ: send first byte */
+            /* Master READ: current-address read (use existing g_reg_addr) */
             uint8 val = 0xFFu;
             g_slave_state = ST_SENDING_DATA;
-            if (g_on_read && g_reg_addr < 0xFFu)
+            if (g_on_read)
                 val = g_on_read(g_reg_addr);
 
             RIIC0.DRT.UINT32 = (uint32)val;
 
-            DBG_PUTS("\nI2C RD r=0x");
-            DBG_HEX8(g_reg_addr);
-            DBG_PUTS(" v=0x");
+            DBG_PUTS("\nRD ");
+            DBG_HEX8((uint8)(g_reg_addr >> 8));
+            DBG_HEX8((uint8)g_reg_addr);
+            DBG_PUTS("=");
             DBG_HEX8(val);
 
-            g_reg_addr++;
+            g_reg_addr++;       /* Auto-increment with wrap */
         }
         else
         {
-            /* Master WRITE: wait for register address */
-            g_slave_state  = ST_ADDR_RECEIVED;
-            g_reg_addr_set = 0u;
-            DBG_PUTS("\nI2C WR");
+            /* Master WRITE: expect 2-byte address next */
+            g_slave_state = ST_ADDR_HI;
+            DBG_PUTS("\nWR ");
         }
         return;
     }
@@ -281,32 +301,36 @@ void hal_riic0_isr_ri(void)
     /* Data phase */
     data = (uint8)RIIC0.DRR.UINT32;
 
-    if (g_slave_state == ST_ADDR_RECEIVED && !g_reg_addr_set)
+    if (g_slave_state == ST_ADDR_HI)
     {
-        /* First data byte = register address */
-        g_reg_addr     = data;
-        g_reg_addr_set = 1u;
-        g_slave_state  = ST_RECEIVING_DATA;
+        /* First byte after slave address = addr high byte */
+        g_reg_addr = (uint16)data << 8;
+        g_slave_state = ST_ADDR_LO;
+    }
+    else if (g_slave_state == ST_ADDR_LO)
+    {
+        /* Second byte = addr low byte, address now complete */
+        g_reg_addr |= (uint16)data;
+        g_slave_state = ST_RECEIVING_DATA;
 
-        DBG_PUTS(" r=0x");
-        DBG_HEX8(data);
+        DBG_HEX8((uint8)(g_reg_addr >> 8));
+        DBG_HEX8((uint8)g_reg_addr);
     }
     else if (g_slave_state == ST_RECEIVING_DATA)
     {
-        /* Subsequent data bytes = register values */
+        /* Subsequent bytes = register data */
         if (g_on_write)
             g_on_write(g_reg_addr, data);
-        g_reg_addr++;
+        g_reg_addr++;               /* Auto-increment with wrap */
 
-        DBG_PUTS(" v=0x");
+        DBG_PUTS("=");
         DBG_HEX8(data);
 
         /* Handle STOP+RDRF race */
         if (RIIC0.SR2.UINT32 & SR2_STOP)
         {
             RIIC0.SR2.UINT32 &= ~(uint32)SR2_STOP;
-            g_slave_state  = ST_IDLE;
-            g_reg_addr_set = 0u;
+            g_slave_state = ST_IDLE;
         }
     }
     else if (g_slave_state == ST_SENDING_DATA ||
