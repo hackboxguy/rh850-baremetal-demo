@@ -1,0 +1,19 @@
+# Build outputs
+output/
+*.obj
+*.abs
+*.hex
+*.bin
+*.map
+
+# WSL build directories
+/tmp/rh850_*
+
+# Temporary reference files (not part of clean repo)
+tmp-docs/
+tmp-sample-code/
+
+# Editor/IDE
+.vscode/
+*.swp
+*~
