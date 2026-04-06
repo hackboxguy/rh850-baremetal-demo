@@ -4,6 +4,7 @@
 #   make BOARD=983HH APP=blink_led
 #   make BOARD=983HH APP=i2c_slave
 #   make BOARD=983HH APP=i2c_slave DEBUG=on
+#   make BOARD=983HH APP=i2c_slave VERSION=01.10
 #   make clean
 #   make info
 #
@@ -65,6 +66,12 @@ INCLUDES  := -I$(CCRH_DIR)/inc \
 # Compiler flags
 CFLAGS    := -Xcommon=rh850 -g -c $(INCLUDES)
 ASMFLAGS  := -Xcommon=rh850 -g -c
+
+# Firmware version (BCD format: make VERSION=01.10 -> v1.10)
+VERSION     ?= 00.00
+VERSION_MAJ := $(word 1,$(subst ., ,$(VERSION)))
+VERSION_MIN := $(word 2,$(subst ., ,$(VERSION)))
+CFLAGS      += -DFW_VERSION_MAJOR=0x$(VERSION_MAJ)u -DFW_VERSION_MINOR=0x$(VERSION_MIN)u
 
 ifeq ($(DEBUG),on)
     CFLAGS += -DDEBUG_ENABLED
@@ -149,6 +156,7 @@ $(OUT_DIR)/$(TARGET).bin: $(OUT_DIR)/$(TARGET).hex
 info:
 	@echo "BOARD      = $(BOARD)"
 	@echo "APP        = $(APP)"
+	@echo "VERSION    = $(VERSION) (major=0x$(VERSION_MAJ) minor=0x$(VERSION_MIN))"
 	@echo "DEBUG      = $(DEBUG)"
 	@echo "TARGET     = $(TARGET)"
 	@echo "C sources  = $(ALL_C_SRC)"

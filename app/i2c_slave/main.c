@@ -46,9 +46,15 @@
 #include "hal_timer.h"
 #include "lib_debug.h"
 
-/* Firmware version (BCD): v1.00 */
-#define FW_VERSION_MAJOR    0x01u
+/* Firmware version (BCD) — provided by Makefile via -D flags.
+ * Build with: make VERSION=01.10  -> v1.10 (0x01, 0x10)
+ * Defaults to v0.00 if VERSION not specified. */
+#ifndef FW_VERSION_MAJOR
+#define FW_VERSION_MAJOR    0x00u
+#endif
+#ifndef FW_VERSION_MINOR
 #define FW_VERSION_MINOR    0x00u
+#endif
 
 /* Register map pages */
 #define PAGE_DEVINFO        0x0000u     /* 0x0000-0x00FF: Device info (RO) */
