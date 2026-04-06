@@ -20,4 +20,10 @@
 #define ICR_RIIC0_RI_ADDR       0xFFFFB09Cu
 #define ICR_RIIC0_TEI_ADDR      0xFFFFB09Eu
 
+/* OSTM0 interrupt channel */
+#define IRQ_OSTM0               84      /* Interval timer */
+
+/* INTC2 control register for OSTM0 */
+#define ICR_OSTM0_ADDR          0xFFFFB0A8u
+
 #endif /* BOARD_VECTORS_H */

@@ -23,10 +23,17 @@ LIB_DIR  := $(CCRH_DIR)/lib/v850e3v5
 # Project root (absolute paths for CC-RH include resolution from BUILD_DIR)
 PROJ_ROOT := $(abspath .)
 
+# Build variant suffix (debug vs release)
+ifeq ($(DEBUG),on)
+    VARIANT := debug
+else
+    VARIANT := release
+endif
+
 # WSL workaround: CC-RH (32-bit) cannot access /mnt/c paths.
 # All compilation happens in /tmp.
-BUILD_DIR := /tmp/rh850_$(BOARD)_$(APP)_build
-OUT_DIR   := output/$(BOARD)/$(APP)
+BUILD_DIR := /tmp/rh850_$(BOARD)_$(APP)_$(VARIANT)_build
+OUT_DIR   := output/$(BOARD)/$(APP)/$(VARIANT)
 
 # ---------------------------------------------------------------------------
 # R7F701686 Memory Map

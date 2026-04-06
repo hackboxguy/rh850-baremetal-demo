@@ -8,6 +8,11 @@
  * Requires PLL (80 MHz CPU, 40 MHz peripherals).
  * Interrupt-driven RIIC0 slave mode.
  *
+ * Debug output (make DEBUG=on):
+ *   Non-blocking via ring buffer + OSTM0 timer drain.
+ *   ISR debug prints take ~1 us instead of ~2-3 ms (blocking).
+ *   No I2C clock-stretching from debug output.
+ *
  * Pi4 usage:
  *   i2cdetect -y 1                    # Shows 0x50
  *   i2cset -y 1 0x50 0x00 0x01        # LED ON
@@ -25,6 +30,7 @@
 #include "hal_uart.h"
 #include "hal_gpio.h"
 #include "hal_riic_slave.h"
+#include "hal_timer.h"
 #include "lib_debug.h"
 
 /* Register map */
@@ -54,19 +60,37 @@ static void uart_reinit(void)
     hal_uart_init(BOARD_PCLK_HZ, BOARD_UART_BAUD);
 }
 
+/*
+ * Timer callback: drain ring buffer to UART.
+ * Called every 1 ms from OSTM0 ISR.
+ * At 115200 baud, ~11 bytes/ms max throughput.
+ * Drain up to 8 bytes per tick to stay within ISR budget.
+ */
+static void timer_drain_cb(void)
+{
+    hal_uart_drain(8u);
+}
+
 int main(void)
 {
     /* Explicitly init globals (safety: BSS zeroing depends on linker setup) */
     g_regs[REG_LED] = 0x00u;
     g_regs[REG_DIP] = 0x00u;
 
-    /* Early UART at 4 MHz */
+    /* Early UART at 4 MHz (blocking, for boot messages) */
     hal_uart_init(BOARD_PCLK_NOPLL_HZ, BOARD_UART_BAUD);
     hal_uart_puts("\n=== I2C Slave Demo ===\n");
 
     /* PLL init */
     hal_clock_init(uart_reinit);
     hal_uart_puts("PLL done, CPU=80MHz\n");
+
+    /* Init non-blocking debug ring buffer */
+    hal_uart_nb_init();
+
+    /* Start OSTM0 timer: 1 ms interval at 40 MHz, drains ring buffer */
+    hal_timer_init(1000u, BOARD_PCLK_HZ, timer_drain_cb);
+    hal_uart_puts("Timer started (1ms)\n");
 
     /* Board-specific GPIO (LED + DIP switches) */
     board_init();

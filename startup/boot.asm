@@ -157,8 +157,14 @@ _INT_Vectors:
     .dw     #_hal_riic0_isr_ri
     ; INT79 = RIIC0 Transmit End (TEI)
     .dw     #_hal_riic0_isr_tei
-    ; INT80 - INT511: no ISR assigned (432 entries)
-    .rept   432
+    ; INT80 - INT83: no ISR assigned (4 entries: TAUJ0I0-I3)
+    .rept   4
+    .dw     #_Dummy_EI
+    .endm
+    ; INT84 = OSTM0 interval timer
+    .dw     #_hal_ostm0_isr
+    ; INT85 - INT511: no ISR assigned (427 entries)
+    .rept   427
     .dw     #_Dummy_EI
     .endm
 

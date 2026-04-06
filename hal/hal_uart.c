@@ -1,7 +1,9 @@
 /*
  * hal_uart.c - RLIN32 UART driver for RH850/F1KM-S1
  *
- * Polling TX on RLIN3 channel 2 (RLIN32).
+ * Blocking TX: polling on RLIN3 channel 2 (RLIN32).
+ * Non-blocking TX: push to ring buffer, drained by timer ISR.
+ *
  * Pins: P0_13 (RX), P0_14 (TX), AF1 on 983HH board.
  *
  * Baud rate formula: baud = pclk / (BRP+1) / NSPB
@@ -11,7 +13,11 @@
 
 #include "hal_uart.h"
 #include "hal_gpio.h"
+#include "lib_ringbuf.h"
 #include "board.h"
+
+/* Ring buffer for non-blocking TX */
+static ringbuf_t g_tx_rb;
 
 static void uart_pins_init(void)
 {
@@ -106,4 +112,54 @@ void hal_uart_put_hex32(uint32 val)
     hal_uart_put_hex8((uint8)(val >> 16));
     hal_uart_put_hex8((uint8)(val >> 8));
     hal_uart_put_hex8((uint8)(val));
+}
+
+/* ---- Non-blocking API ---- */
+
+void hal_uart_nb_init(void)
+{
+    ringbuf_init(&g_tx_rb);
+}
+
+void hal_uart_nb_putc(uint8 c)
+{
+    ringbuf_put(&g_tx_rb, c);   /* Drop silently if full */
+}
+
+void hal_uart_nb_puts(const char *s)
+{
+    while (*s)
+    {
+        if (*s == '\n')
+            hal_uart_nb_putc('\r');
+        hal_uart_nb_putc((uint8)*s++);
+    }
+}
+
+void hal_uart_nb_put_hex8(uint8 val)
+{
+    static const char hex[] = "0123456789ABCDEF";
+    hal_uart_nb_putc(hex[(val >> 4) & 0x0Fu]);
+    hal_uart_nb_putc(hex[val & 0x0Fu]);
+}
+
+uint32 hal_uart_drain(uint32 max_bytes)
+{
+    uint32 count = 0u;
+    uint8  byte;
+
+    while (count < max_bytes)
+    {
+        /* Check if UART TX is idle (LST.UTS bit 4 = 0) */
+        if (RLN32LST & 0x10u)
+            break;              /* TX busy, try next time */
+
+        if (!ringbuf_get(&g_tx_rb, &byte))
+            break;              /* Buffer empty */
+
+        RLN32LUTDR = (uint16)byte;
+        count++;
+    }
+
+    return count;
 }
