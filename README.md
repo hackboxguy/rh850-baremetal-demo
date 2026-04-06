@@ -58,11 +58,13 @@ rh850-baremetal-demo/
 │   ├── hal_clock.c/h        PLL init, protected write helpers
 │   ├── hal_gpio.c/h         GPIO read/write, PSR atomic macros
 │   ├── hal_uart.c/h         RLIN3 UART (polling TX)
-│   ├── hal_riic_slave.c/h   RIIC0 slave (interrupt-driven)
+│   ├── hal_riic_slave.c/h   RIIC0 slave (interrupt-driven, 16-bit addr)
 │   ├── hal_riic_master.c/h  RIIC0 master (polling)
-│   └── hal_i2c_bitbang.c/h  Bit-banged I2C (GPIO-based)
+│   ├── hal_i2c_bitbang.c/h  Bit-banged I2C (GPIO-based)
+│   └── hal_timer.c/h        OSTM0 interval timer
 ├── lib/                     Portable libraries
-│   └── lib_debug.h          Debug macros (compile-time on/off)
+│   ├── lib_debug.h          Debug macros (non-blocking, compile-time on/off)
+│   └── lib_ringbuf.c/h      Lock-free SPSC ring buffer
 ├── app/                     Application examples
 │   ├── blink_led/main.c
 │   ├── mirror_dip/main.c
@@ -70,6 +72,7 @@ rh850-baremetal-demo/
 │   ├── i2c_master_pcf8574/main.c
 │   └── i2c_slave/main.c
 └── docs/                    Reference documentation
+    └── i2c_register_map.md  I2C slave protocol and register spec
 ```
 
 ## Adding a New Board
@@ -84,6 +87,14 @@ rh850-baremetal-demo/
 1. Create `app/<APP_NAME>/main.c`
 2. Include the HAL headers you need (`hal_clock.h`, `hal_gpio.h`, etc.)
 3. Build with `make BOARD=983HH APP=<APP_NAME>`
+
+## I2C Slave Interface
+
+The `i2c_slave` app exposes a standard 16-bit sub-addressed I2C slave
+(EEPROM-style, 24C256 compatible) with 64K register address space.
+
+See [docs/i2c_register_map.md](docs/i2c_register_map.md) for the full
+protocol specification and register layout.
 
 ## Memory Map (R7F701686)
 
