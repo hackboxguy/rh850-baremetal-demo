@@ -2,17 +2,20 @@
  * board_init.c - Power-up sequence for REMOTE_DISP board
  *
  * Translates the BIOS init script (disp-bios-init-script.txt) into
- * bare-metal C. Initializes GPIO ports, power rails, FPGA, deserializer,
- * LCD panel, and backlight in the correct order with required delays.
+ * bare-metal C. Each power pin is configured as output AND driven high
+ * in the same step, matching the BIOS script's incremental approach:
+ *   P <port> 20 <mask>     -> set level HIGH
+ *   P <port> 82 <mask> 0   -> configure as push-pull output
  *
  * Sequence:
- *   1. Configure GPIO port directions
- *   2. Enable main power (5V, 3.3V, PMIC)
- *   3. Enable FPGA power rails (1.1V, 1.35V, 1.2V, 2.5V)
- *   4. FPGA program + release reset
- *   5. Enable deserializer power + release reset
- *   6. Enable backlight
- *   7. LCD panel reset sequence (with timing)
+ *   1. Configure GPIO port directions and initial levels
+ *   2. Enable main power (5V, 3.3V, PMIC) + 5ms
+ *   3. Enable FPGA power rails (1.1V, 1.35V, 1.2V, 2.5V) + 5ms
+ *   4. FPGA program + release reset (5ms each)
+ *   5. Enable deserializer power + DCDC reset + 5ms
+ *   6. SPI chip select init
+ *   7. Enable backlight
+ *   8. LCD panel reset sequence (with timing)
  */
 
 #include "board.h"
@@ -22,33 +25,53 @@
 
 static void delay_ms(uint32 ms)
 {
-    /* ~80000 iterations per ms at 80 MHz CPU (rough estimate).
-     * For precise timing, use a hardware timer. */
-    volatile uint32 d = ms * 80000u;
-    while (d-- != 0u)
+    /*
+     * Busy-wait delay calibrated for 80 MHz CPU clock.
+     * Each inner loop iteration is ~4 instructions (dec, compare, branch,
+     * plus volatile load/store) = ~5 cycles at 80 MHz = ~62.5 ns.
+     * 1 ms = 16000 iterations. Use 20000 for safety margin.
+     */
+    uint32 outer;
+    for (outer = 0u; outer < ms; outer++)
     {
-        ;
+        volatile uint32 d = 20000u;
+        while (d-- != 0u)
+        {
+            ;
+        }
     }
+}
+
+/* ---- Helper: set pin HIGH and configure as push-pull output ---- */
+/*
+ * Matches the BIOS script pattern:
+ *   P <port> 20 <mask>      -> set level 1
+ *   P <port> 82 <mask> 0000 -> configure as push-pull output
+ */
+static void pin_drive_high(uint8 port, uint8 bit)
+{
+    hal_gpio_write(port, bit, 1);
+    hal_gpio_set_output(port, bit);
+}
+
+/* Helper for AP0 pins (analog port, different register set) */
+static void ap0_drive_high(uint8 bit)
+{
+    PORTAPSR0  = PSR_SET(bit);
+    PORTAPMSR0 = PSR_CLR(bit);     /* PM=0 -> output */
 }
 
 /* ---- GPIO port configuration ---- */
 
 /*
  * Configure all port directions and initial levels.
- * Derived from BIOS script port init section.
+ * Derived from BIOS script port init section (lines 15-57).
  *
  * BIOS command mapping:
  *   P <port> 10 <mask>       -> clear bits (set level 0)
- *   P <port> 20 <mask>       -> set bits (set level 1)
- *   P <port> 81 <in> <out>   -> set direction (in=input mask, out=output mask)
+ *   P <port> 81 <in> <out>   -> set direction (in=input, out=output)
  *   P <port> 82 <out> <od>   -> set output + open-drain
  *   P <port> E0 <mask>       -> set input buffer (Schmitt trigger)
- *
- * In bare-metal:
- *   Level 0/1:   PSR register (atomic set/reset)
- *   Direction:   PMSR register (0=output, 1=input) via atomic set/reset
- *   GPIO mode:   PMCSR register (clear bit = GPIO mode)
- *   Input buf:   PIBC register (enable Schmitt trigger)
  */
 
 static void port_init(void)
@@ -56,13 +79,21 @@ static void port_init(void)
     uint8 i;
 
     /* --- Port AP0 (B0) --- */
-    /* Clear AP0 output bits: 0xFE00 = bits 9-15 */
-    /* Inputs: 0x41FF, Outputs: 0xFE00 */
-    /* Note: AP0 uses APMSR0/APSR0 registers */
-    PORTAPSR0 &= ~(uint32)0xFE00u;
+    /* BIOS: P B0 10 FE00 / P B0 81 41FF FE00 / P B0 82 FE00 0000 */
+    /* Clear output bits, set directions */
+    for (i = 0u; i < 16u; i++)
+    {
+        if ((0xFE00u & ((uint16)1u << i)) != 0u)
+        {
+            PORTAPSR0  = PSR_CLR(i);
+            PORTAPMSR0 = PSR_CLR(i);   /* Output */
+        }
+    }
+    /* Enable input buffer for input pins: 0x41FF */
+    PORTAPIBC0 |= 0x41FFu;
 
     /* --- Port P0 --- */
-    /* Clear bits: 0x1161 = bits 0,5,6,8,12 */
+    /* BIOS: P 00 10 1161 / P 00 81 269E 5961 / P 00 82 5961 0000 / P 00 E0 269E */
     for (i = 0u; i < 16u; i++)
     {
         if ((0x1161u & ((uint16)1u << i)) != 0u)
@@ -70,18 +101,19 @@ static void port_init(void)
             PORTPSR0 = PSR_CLR(i);
         }
     }
-    /* Outputs: 0x5961 = bits 0,5,6,8,10,11,12,14 */
     for (i = 0u; i < 16u; i++)
     {
         if ((0x5961u & ((uint16)1u << i)) != 0u)
         {
-            PORTPMCSR0 = PSR_CLR(i);   /* GPIO mode */
-            PORTPMSR0  = PSR_CLR(i);   /* Output */
+            PORTPMCSR0 = PSR_CLR(i);
+            PORTPMSR0  = PSR_CLR(i);
         }
     }
+    /* Input buffer Schmitt trigger for inputs: 0x269E */
+    PORTPIBC0 |= 0x269Eu;
 
     /* --- Port P8 --- */
-    /* Clear bits: 0x1C23 = bits 0,1,5,10,11,12 */
+    /* BIOS: P 08 10 1C23 / P 08 81 E1DC 1E23 / P 08 82 1E23 0000 / P 08 E0 01DC */
     for (i = 0u; i < 16u; i++)
     {
         if ((0x1C23u & ((uint16)1u << i)) != 0u)
@@ -89,7 +121,6 @@ static void port_init(void)
             PORTPSR8 = PSR_CLR(i);
         }
     }
-    /* Outputs: 0x1E23 = bits 0,1,5,9,10,11,12 */
     for (i = 0u; i < 16u; i++)
     {
         if ((0x1E23u & ((uint16)1u << i)) != 0u)
@@ -98,11 +129,11 @@ static void port_init(void)
             PORTPMSR8  = PSR_CLR(i);
         }
     }
+    PORTPIBC8 |= 0x01DCu;
 
     /* --- Port P9 --- */
-    /* Clear bits: 0x0001 = bit 0 */
+    /* BIOS: P 09 10 0001 / P 09 81 FF94 006B / P 09 82 006B 0000 / P 09 E0 FF90 */
     PORTPSR9 = PSR_CLR(0);
-    /* Outputs: 0x006B = bits 0,1,3,5,6 */
     for (i = 0u; i < 16u; i++)
     {
         if ((0x006Bu & ((uint16)1u << i)) != 0u)
@@ -111,9 +142,10 @@ static void port_init(void)
             PORTPMSR9  = PSR_CLR(i);
         }
     }
+    PORTPIBC9 |= 0xFF90u;
 
     /* --- Port P10 --- */
-    /* Clear bits: 0x94B3 = bits 0,1,4,5,7,10,12,15 */
+    /* BIOS: P 10 10 94B3 / P 10 81 4B4C B4B3 / P 10 82 B4B3 0000 / P 10 E0 4B40 */
     for (i = 0u; i < 16u; i++)
     {
         if ((0x94B3u & ((uint16)1u << i)) != 0u)
@@ -121,7 +153,6 @@ static void port_init(void)
             PORTPSR10 = PSR_CLR(i);
         }
     }
-    /* Outputs: 0xB4B3 = bits 0,1,4,5,7,8,10,12,13,15 */
     for (i = 0u; i < 16u; i++)
     {
         if ((0xB4B3u & ((uint16)1u << i)) != 0u)
@@ -130,9 +161,11 @@ static void port_init(void)
             PORTPMSR10  = PSR_CLR(i);
         }
     }
+    PORTPIBC10 |= 0x4B40u;
 
     /* --- Port P11 --- */
-    /* P11_0 as output (LCD_PON) */
+    /* LCD_PON (P11_0): output, initially LOW */
+    PORTPSR11   = PSR_CLR(PIN_LCD_PON_BIT);
     PORTPMCSR11 = PSR_CLR(PIN_LCD_PON_BIT);
     PORTPMSR11  = PSR_CLR(PIN_LCD_PON_BIT);
 
@@ -143,78 +176,99 @@ static void port_init(void)
 
 static void power_main_enable(void)
 {
+    /* BIOS lines 63-72: set HIGH then configure as output */
+
     /* IOC_ON_UG5V (P9_3) -> HIGH */
-    hal_gpio_write(PIN_IOC_ON_UG5V_PORT, PIN_IOC_ON_UG5V_BIT, 1);
+    pin_drive_high(PIN_IOC_ON_UG5V_PORT, PIN_IOC_ON_UG5V_BIT);
 
     /* EN 3V3_SW (P9_5) -> HIGH */
-    hal_gpio_write(PIN_EN_3V3_SW_PORT, PIN_EN_3V3_SW_BIT, 1);
+    pin_drive_high(PIN_EN_3V3_SW_PORT, PIN_EN_3V3_SW_BIT);
 
     /* RTQ6749_EN (P10_4) -> HIGH */
-    hal_gpio_write(PIN_RTQ6749_EN_PORT, PIN_RTQ6749_EN_BIT, 1);
+    pin_drive_high(PIN_RTQ6749_EN_PORT, PIN_RTQ6749_EN_BIT);
 
     delay_ms(5);
 }
 
 static void power_fpga_enable(void)
 {
+    /* BIOS lines 75-90 */
+
     /* IOC_ON_UG1V1 (P10_9) -> HIGH */
-    hal_gpio_write(PIN_IOC_ON_UG1V1_PORT, PIN_IOC_ON_UG1V1_BIT, 1);
+    pin_drive_high(PIN_IOC_ON_UG1V1_PORT, PIN_IOC_ON_UG1V1_BIT);
 
     /* IOC_ON_UG1V35 (P10_10) -> HIGH */
-    hal_gpio_write(PIN_IOC_ON_UG1V35_PORT, PIN_IOC_ON_UG1V35_BIT, 1);
+    pin_drive_high(PIN_IOC_ON_UG1V35_PORT, PIN_IOC_ON_UG1V35_BIT);
 
     /* IOC_ON_UG1V2 (P10_12) -> HIGH */
-    hal_gpio_write(PIN_IOC_ON_UG1V2_PORT, PIN_IOC_ON_UG1V2_BIT, 1);
+    pin_drive_high(PIN_IOC_ON_UG1V2_PORT, PIN_IOC_ON_UG1V2_BIT);
 
     /* IOC_ON_UG2V5 (P10_7) -> HIGH */
-    hal_gpio_write(PIN_IOC_ON_UG2V5_PORT, PIN_IOC_ON_UG2V5_BIT, 1);
+    pin_drive_high(PIN_IOC_ON_UG2V5_PORT, PIN_IOC_ON_UG2V5_BIT);
 
     delay_ms(5);
 }
 
 static void fpga_program_and_reset(void)
 {
+    /* BIOS lines 92-100 */
+
     /* PROGRAM (P8_6) -> HIGH */
-    hal_gpio_write(PIN_FPGA_PROGRAM_PORT, PIN_FPGA_PROGRAM_BIT, 1);
+    pin_drive_high(PIN_FPGA_PROGRAM_PORT, PIN_FPGA_PROGRAM_BIT);
     delay_ms(5);
 
     /* FPGA_RSTN (P8_5) -> HIGH (release reset) */
-    hal_gpio_write(PIN_FPGA_RSTN_PORT, PIN_FPGA_RSTN_BIT, 1);
+    pin_drive_high(PIN_FPGA_RSTN_PORT, PIN_FPGA_RSTN_BIT);
     delay_ms(5);
 }
 
 static void deser_power_enable(void)
 {
-    /* IOC_ON_UG1V8 (AP0_5) -> HIGH */
-    PORTAPSR0 = PSR_SET(PIN_IOC_ON_UG1V8_BIT);
+    /* BIOS lines 102-118 */
 
-    /* IOC_ON_UG1V15 (AP0_6) -> HIGH */
-    PORTAPSR0 = PSR_SET(PIN_IOC_ON_UG1V15_BIT);
+    /* IOC_ON_UG1V8 (AP0_5) -> HIGH + output */
+    ap0_drive_high(PIN_IOC_ON_UG1V8_BIT);
+
+    /* IOC_ON_UG1V15 (AP0_6) -> HIGH + output */
+    ap0_drive_high(PIN_IOC_ON_UG1V15_BIT);
 
     /* DCDC_RST (P8_8) -> HIGH */
-    hal_gpio_write(PIN_DCDC_RST_PORT, PIN_DCDC_RST_BIT, 1);
+    pin_drive_high(PIN_DCDC_RST_PORT, PIN_DCDC_RST_BIT);
     delay_ms(5);
 
     /* WP (AP0_14) -> HIGH (release write-protect) */
-    PORTAPSR0 = PSR_SET(PIN_DESER_WP_BIT);
+    ap0_drive_high(PIN_DESER_WP_BIT);
+}
+
+static void spi_cs_init(void)
+{
+    /* BIOS lines 146-147: SPI_CS (P0_11) as push-pull output, LOW */
+    hal_gpio_write(PIN_SPI_CS_PORT, PIN_SPI_CS_BIT, 0);
+    hal_gpio_set_output(PIN_SPI_CS_PORT, PIN_SPI_CS_BIT);
 }
 
 static void backlight_enable(void)
 {
+    /* BIOS lines 157-158 */
+
     /* VLED_ON (P10_11) -> HIGH */
-    hal_gpio_write(PIN_VLED_ON_PORT, PIN_VLED_ON_BIT, 1);
+    pin_drive_high(PIN_VLED_ON_PORT, PIN_VLED_ON_BIT);
 }
 
 static void lcd_reset_sequence(void)
 {
-    /* LCD_TP_RST (P0_10) -> LOW */
+    /* BIOS lines 166-186 */
+
+    /* LCD_TP_RST (P0_10) -> LOW, configure as output */
     hal_gpio_write(PIN_LCD_TP_RST_PORT, PIN_LCD_TP_RST_BIT, 0);
+    hal_gpio_set_output(PIN_LCD_TP_RST_PORT, PIN_LCD_TP_RST_BIT);
     delay_ms(10);
 
     /* LCD_RST (P10_15) -> LOW */
     hal_gpio_write(PIN_LCD_RST_PORT, PIN_LCD_RST_BIT, 0);
+    hal_gpio_set_output(PIN_LCD_RST_PORT, PIN_LCD_RST_BIT);
 
-    /* LCD_PON (P11_0) -> LOW */
+    /* LCD_PON (P11_0) -> LOW (already output from port_init) */
     hal_gpio_write(PIN_LCD_PON_PORT, PIN_LCD_PON_BIT, 0);
     delay_ms(6);
 
@@ -249,9 +303,12 @@ void board_init(void)
     /* 5. Deserializer power + DCDC + write-protect release */
     deser_power_enable();
 
-    /* 6. Backlight enable */
+    /* 6. SPI chip select init */
+    spi_cs_init();
+
+    /* 7. Backlight enable */
     backlight_enable();
 
-    /* 7. LCD panel reset sequence */
+    /* 8. LCD panel reset sequence */
     lcd_reset_sequence();
 }
