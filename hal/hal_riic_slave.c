@@ -66,6 +66,7 @@
 
 static volatile uint8  g_slave_state;
 static volatile uint16 g_reg_addr;      /* 16-bit register address */
+static volatile uint16 g_txn_addr;      /* Debug: start address of current transaction */
 
 static hal_riic_slave_write_cb g_on_write;
 static hal_riic_slave_read_cb  g_on_read;
@@ -176,8 +177,9 @@ void hal_riic_slave_init(uint8 slave_addr,
     __nop();
 
     /* Init state — address starts at 0x0000 (EEPROM power-on default) */
-    g_slave_state = ST_IDLE;
-    g_reg_addr    = 0x0000u;
+    g_slave_state  = ST_IDLE;
+    g_reg_addr     = 0x0000u;
+    g_txn_addr     = 0x0000u;
 
     /* Clear flags and unmask RIIC0 interrupts */
     ICRIIC0TI  &= ~ICR_RF;
@@ -222,6 +224,7 @@ void hal_riic0_isr_ti(void)
 void hal_riic0_isr_ee(void)
 {
     uint32 sr2 = RIIC0.SR2.UINT32;
+    uint16 bytes_transferred;
 
     if ((sr2 & SR2_START) != 0u)
     {
@@ -232,6 +235,19 @@ void hal_riic0_isr_ee(void)
     {
         (void)RIIC0.DRR.UINT32;        /* Dummy read */
         RIIC0.SR2.UINT32 &= ~(uint32)SR2_NACKF;
+        /* Log completed read transaction.
+         * Subtract 1: TI pre-loads one extra byte that master NACKs. */
+        if ((g_slave_state == ST_SENDING_DATA) ||
+            (g_slave_state == ST_SEND_DONE))
+        {
+            bytes_transferred = (g_reg_addr - g_txn_addr) - 1u;
+            DBG_PUTS("R[");
+            DBG_HEX8((uint8)(g_txn_addr >> 8));
+            DBG_HEX8((uint8)g_txn_addr);
+            DBG_PUTS("] ");
+            DBG_HEX8((uint8)bytes_transferred);
+            DBG_PUTS(" bytes\n");
+        }
         g_slave_state = ST_IDLE;
     }
 
@@ -285,19 +301,13 @@ void hal_riic0_isr_ri(void)
 
             RIIC0.DRT.UINT32 = (uint32)val;
 
-            DBG_PUTS("\nRD ");
-            DBG_HEX8((uint8)(g_reg_addr >> 8));
-            DBG_HEX8((uint8)g_reg_addr);
-            DBG_PUTS("=");
-            DBG_HEX8(val);
-
-            g_reg_addr++;       /* Auto-increment with wrap */
+            g_txn_addr = g_reg_addr;    /* Remember start for debug log */
+            g_reg_addr++;               /* Auto-increment with wrap */
         }
         else
         {
             /* Master WRITE: expect 2-byte address next */
             g_slave_state = ST_ADDR_HI;
-            DBG_PUTS("\nWR ");
         }
         return;
     }
@@ -316,9 +326,6 @@ void hal_riic0_isr_ri(void)
         /* Second byte = addr low byte, address now complete */
         g_reg_addr |= (uint16)data;
         g_slave_state = ST_RECEIVING_DATA;
-
-        DBG_HEX8((uint8)(g_reg_addr >> 8));
-        DBG_HEX8((uint8)g_reg_addr);
     }
     else if (g_slave_state == ST_RECEIVING_DATA)
     {
@@ -327,10 +334,15 @@ void hal_riic0_isr_ri(void)
         {
             g_on_write(g_reg_addr, data);
         }
-        g_reg_addr++;               /* Auto-increment with wrap */
 
-        DBG_PUTS("=");
+        DBG_PUTS("W[");
+        DBG_HEX8((uint8)(g_reg_addr >> 8));
+        DBG_HEX8((uint8)g_reg_addr);
+        DBG_PUTS("]=");
         DBG_HEX8(data);
+        DBG_PUTS("\n");
+
+        g_reg_addr++;               /* Auto-increment with wrap */
 
         /* Handle STOP+RDRF race */
         if ((RIIC0.SR2.UINT32 & SR2_STOP) != 0u)

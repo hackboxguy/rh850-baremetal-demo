@@ -90,13 +90,16 @@ int main(void)
 
     /* PLL init (UART reinited at 40 MHz if DEBUG is on) */
     hal_clock_init(BOOT_UART_REINIT_CB);
-    DBG_PUTS("PLL done, CPU=80MHz\n");
 
 #ifdef DEBUG_ENABLED
-    /* Init non-blocking debug ring buffer + timer drain */
+    /* Boot status uses blocking UART (safe before main loop) */
+    hal_uart_puts("PLL done, CPU=80MHz\n");
+
+    /* Init non-blocking debug ring buffer + timer drain.
+     * After this point, only ISR debug uses the ring buffer. */
     hal_uart_nb_init();
     hal_timer_init(1000u, BOARD_PCLK_HZ, timer_drain_cb);
-    DBG_PUTS("Timer started (1ms)\n");
+    hal_uart_puts("Timer started (1ms)\n");
 #endif
 
     /* Board-specific GPIO (LED + DIP switches) */
@@ -104,9 +107,11 @@ int main(void)
 
     /* RIIC0 slave init (16-bit sub-addressing) */
     hal_riic_slave_init(BOARD_I2C_SLAVE_ADDR, on_write, on_read);
-    DBG_PUTS("RIIC0 slave addr=0x");
-    DBG_HEX8(BOARD_I2C_SLAVE_ADDR);
-    DBG_PUTS("\n");
+#ifdef DEBUG_ENABLED
+    hal_uart_puts("RIIC0 slave addr=0x");
+    hal_uart_put_hex8(BOARD_I2C_SLAVE_ADDR);
+    hal_uart_puts("\n");
+#endif
 
     /* Enable global interrupts */
     __EI();
