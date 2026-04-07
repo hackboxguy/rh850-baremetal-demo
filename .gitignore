@@ -13,6 +13,13 @@ output/
 tmp-docs/
 tmp-sample-code/
 
+# Licensed/purchased documents (do not commit)
+*.pdf
+
+# cppcheck temp files
+cppcheck-addon-ctu-file-list*
+*.ctu-info
+
 # Editor/IDE
 .vscode/
 *.swp
