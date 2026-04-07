@@ -218,6 +218,17 @@ misra-count:
 		sed 's/.*\[misra-c2012-//' | sed 's/\]//' | \
 		sort | uniq -c | sort -rn
 
+# Show linked section sizes and total (from map file)
+size:
+	@if [ -f "$(OUT_DIR)/$(TARGET).map" ]; then \
+		echo "=== $(TARGET) ($(VARIANT)) ==="; \
+		grep "^SECTION " $(OUT_DIR)/$(TARGET).map -A20 | head -20; \
+		echo ""; \
+		awk '/^SECTION /{found=1;next} found && /^$$/{exit} found && /^ /{total+=strtonum("0x"$$3)} END{printf "Total:  %d bytes (%.1f KB)\nLimit:  262144 bytes (256.0 KB)\nUsage:  %.1f%%\n", total, total/1024, total/262144*100}' $(OUT_DIR)/$(TARGET).map; \
+	else \
+		echo "No map file found. Build first: make BOARD=$(BOARD) APP=$(APP)"; \
+	fi
+
 clean:
 	rm -rf $(BUILD_DIR) $(OUT_DIR)
 
