@@ -38,10 +38,6 @@
 #define BOARD_I2C_MR1           0x10u       /* CKS=/2 */
 #define BOARD_I2C_BRL           0xF2u       /* 0xE0 | 0x12 (18 cycles low) */
 
-/* ---- DIP switches (AP0_7 through AP0_12, AP0_14) ---- */
-#define BOARD_DIP_START_BIT     7
-#define BOARD_DIP_COUNT         8
-
 /* ---- Backlight NTC temperature sensor (AP0_0 = ANI000) ---- */
 #define BOARD_NTC_ADC_CHANNEL   0           /* ADCA0 physical channel ANI00 */
 /*

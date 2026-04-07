@@ -23,7 +23,6 @@
 
 #include "board.h"
 #include "hal_clock.h"
-#include "hal_gpio.h"
 #include "hal_adc.h"
 #include "hal_riic_slave.h"
 #include "hal_timer.h"
@@ -43,9 +42,6 @@
 /* Page 0x00: Device info */
 #define REG_FW_MAJOR        0x0000u
 #define REG_FW_MINOR        0x0001u
-
-/* Page 0x01: Status */
-#define REG_DIP             0x0100u
 
 /* Page 0x10: Diagnostics */
 #define REG_TEMP_BL_RAW_HI  0x1000u     /* Backlight NTC ADC raw (bits 11:8) */
@@ -271,9 +267,6 @@ static uint8 on_read(uint16 reg)
     /* Device info */
     case REG_FW_MAJOR:      return FW_VERSION_MAJOR;
     case REG_FW_MINOR:      return FW_VERSION_MINOR;
-
-    /* Status */
-    case REG_DIP:           return hal_gpio_read_dip();
 
     /* Diagnostics: backlight temperature */
     case REG_TEMP_BL_RAW_HI:  return (uint8)(g_adc_raw >> 8);

@@ -53,6 +53,7 @@ void hal_gpio_write(uint8 port, uint8 bit, uint8 value)
     }
 }
 
+#ifdef BOARD_DIP_COUNT
 void hal_gpio_set_analog_input(uint8 start_bit, uint8 count)
 {
     uint8  i;
@@ -74,3 +75,4 @@ uint8 hal_gpio_read_dip(void)
     return (uint8)((PORTAPPR0 >> BOARD_DIP_START_BIT) &
                    (((uint32)1u << BOARD_DIP_COUNT) - 1u));
 }
+#endif /* BOARD_DIP_COUNT */
