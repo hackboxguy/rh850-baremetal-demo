@@ -34,36 +34,36 @@ static void riic0_pin_setup(uint8 bit)
 {
     uint32 tmp;
 
-    PORTPIBC10  &= ~(uint16)(1u << bit);
-    PORT.PBDC10 &= ~(uint16)(1u << bit);
-    PORTPM10    |= (uint16)(1u << bit);
-    PORTPMC10   &= ~(uint16)(1u << bit);
-    PORTPIPC10  &= ~(uint16)(1u << bit);
+    PORTPIBC10  &= ~((uint16)1u << bit);
+    PORT.PBDC10 &= ~((uint16)1u << bit);
+    PORTPM10    |= ((uint16)1u << bit);
+    PORTPMC10   &= ~((uint16)1u << bit);
+    PORTPIPC10  &= ~((uint16)1u << bit);
 
     /* Clear PDSC - protected write */
     tmp = PORT.PDSC10;
     PORTPPCMD10 = 0xA5u;
-    PORT.PDSC10 = (tmp & ~(uint32)(1u << bit));
-    PORT.PDSC10 = ~(tmp & ~(uint32)(1u << bit));
-    PORT.PDSC10 = (tmp & ~(uint32)(1u << bit));
+    PORT.PDSC10 = (tmp & ~((uint32)1u << bit));
+    PORT.PDSC10 = ~(tmp & ~((uint32)1u << bit));
+    PORT.PDSC10 = (tmp & ~((uint32)1u << bit));
 
     /* Set PODC (open-drain) - protected write */
     tmp = PORTPODC10;
     PORTPPCMD10 = 0xA5u;
-    PORTPODC10 = (tmp | (uint32)(1u << bit));
-    PORTPODC10 = ~(tmp | (uint32)(1u << bit));
-    PORTPODC10 = (tmp | (uint32)(1u << bit));
+    PORTPODC10 = (tmp | ((uint32)1u << bit));
+    PORTPODC10 = ~(tmp | ((uint32)1u << bit));
+    PORTPODC10 = (tmp | ((uint32)1u << bit));
 
     /* PBDC=1 (critical for I2C bidirectional) */
-    PORT.PBDC10 |= (uint16)(1u << bit);
+    PORT.PBDC10 |= ((uint16)1u << bit);
 
     /* AF2: PFC=1, PFCE=0, PFCAE=0 */
-    PORTPFC10   |= (uint16)(1u << bit);
-    PORTPFCE10  &= ~(uint16)(1u << bit);
-    PORTPFCAE10 &= ~(uint16)(1u << bit);
+    PORTPFC10   |= ((uint16)1u << bit);
+    PORTPFCE10  &= ~((uint16)1u << bit);
+    PORTPFCAE10 &= ~((uint16)1u << bit);
 
-    PORTPMC10 |= (uint16)(1u << bit);
-    PORTPM10  &= ~(uint16)(1u << bit);
+    PORTPMC10 |= ((uint16)1u << bit);
+    PORTPM10  &= ~((uint16)1u << bit);
 }
 
 /* ---- Polling helpers ---- */
@@ -71,32 +71,44 @@ static void riic0_pin_setup(uint8 bit)
 static uint8 wait_tdre(void)
 {
     volatile uint32 t = TIMEOUT;
-    while (!(RIIC0.SR2.UINT32 & SR2_TDRE) && --t)
-        ;
+    while (t != 0u)
+    {
+        if ((RIIC0.SR2.UINT32 & SR2_TDRE) != 0u) { break; }
+        t--;
+    }
     return (t > 0u) ? 1u : 0u;
 }
 
 static uint8 wait_tend(void)
 {
     volatile uint32 t = TIMEOUT;
-    while (!(RIIC0.SR2.UINT32 & SR2_TEND) && --t)
-        ;
+    while (t != 0u)
+    {
+        if ((RIIC0.SR2.UINT32 & SR2_TEND) != 0u) { break; }
+        t--;
+    }
     return (t > 0u) ? 1u : 0u;
 }
 
 static uint8 wait_rdrf(void)
 {
     volatile uint32 t = TIMEOUT;
-    while (!(RIIC0.SR2.UINT32 & SR2_RDRF) && --t)
-        ;
+    while (t != 0u)
+    {
+        if ((RIIC0.SR2.UINT32 & SR2_RDRF) != 0u) { break; }
+        t--;
+    }
     return (t > 0u) ? 1u : 0u;
 }
 
 static uint8 wait_stop(void)
 {
     volatile uint32 t = TIMEOUT;
-    while (!(RIIC0.SR2.UINT32 & SR2_STOP) && --t)
-        ;
+    while (t != 0u)
+    {
+        if ((RIIC0.SR2.UINT32 & SR2_STOP) != 0u) { break; }
+        t--;
+    }
     return (t > 0u) ? 1u : 0u;
 }
 
@@ -104,8 +116,8 @@ static void issue_stop(void)
 {
     RIIC0.SR2.UINT32 &= ~(uint32)SR2_STOP;
     RIIC0.CR2.UINT32 = CR2_SP;
-    wait_stop();
-    RIIC0.SR2.UINT32 &= ~(uint32)(SR2_NACKF | SR2_STOP);
+    (void)wait_stop();
+    RIIC0.SR2.UINT32 &= ~((uint32)SR2_NACKF | (uint32)SR2_STOP);
 }
 
 /* ---- Public API ---- */
@@ -147,7 +159,7 @@ void hal_riic_master_init(void)
     __nop();
 
     /* Allow bus-free detection */
-    { volatile uint32 d = 1000u; while (d--) ; }
+    { volatile uint32 d = 1000u; while (d-- != 0u) { ; } }
 }
 
 uint8 hal_riic_master_write(uint8 addr_7bit, const uint8 *data, uint8 len)
@@ -155,21 +167,25 @@ uint8 hal_riic_master_write(uint8 addr_7bit, const uint8 *data, uint8 len)
     uint8 i;
 
     /* Check bus not busy */
-    if (RIIC0.CR2.UINT32 & CR2_BBSY)
+    if ((RIIC0.CR2.UINT32 & CR2_BBSY) != 0u)
+    {
         return 0u;
+    }
 
     /* Issue START */
     RIIC0.CR2.UINT32 = CR2_ST;
 
-    if (!wait_tdre())
+    if (wait_tdre() == 0u)
+    {
         return 0u;
+    }
 
     /* Send slave address + W */
-    RIIC0.DRT.UINT32 = (uint32)(addr_7bit << 1);
+    RIIC0.DRT.UINT32 = (uint32)addr_7bit << 1;
 
-    if (!wait_tend())
+    if (wait_tend() == 0u)
         { issue_stop(); return 0u; }
-    if (RIIC0.SR2.UINT32 & SR2_NACKF)
+    if ((RIIC0.SR2.UINT32 & SR2_NACKF) != 0u)
         { issue_stop(); return 0u; }
 
     /* Send data bytes */
@@ -177,9 +193,9 @@ uint8 hal_riic_master_write(uint8 addr_7bit, const uint8 *data, uint8 len)
     {
         RIIC0.DRT.UINT32 = (uint32)data[i];
 
-        if (!wait_tend())
+        if (wait_tend() == 0u)
             { issue_stop(); return 0u; }
-        if (RIIC0.SR2.UINT32 & SR2_NACKF)
+        if ((RIIC0.SR2.UINT32 & SR2_NACKF) != 0u)
             { issue_stop(); return 0u; }
     }
 
@@ -192,27 +208,31 @@ uint8 hal_riic_master_read(uint8 addr_7bit, uint8 *data, uint8 len)
 {
     uint8 i;
 
-    if (RIIC0.CR2.UINT32 & CR2_BBSY)
+    if ((RIIC0.CR2.UINT32 & CR2_BBSY) != 0u)
+    {
         return 0u;
+    }
 
     /* Issue START */
     RIIC0.CR2.UINT32 = CR2_ST;
 
-    if (!wait_tdre())
+    if (wait_tdre() == 0u)
+    {
         return 0u;
+    }
 
     /* Send slave address + R */
-    RIIC0.DRT.UINT32 = (uint32)((addr_7bit << 1) | 1u);
+    RIIC0.DRT.UINT32 = ((uint32)addr_7bit << 1) | 1u;
 
-    if (!wait_rdrf())
+    if (wait_rdrf() == 0u)
         { issue_stop(); return 0u; }
-    if (RIIC0.SR2.UINT32 & SR2_NACKF)
+    if ((RIIC0.SR2.UINT32 & SR2_NACKF) != 0u)
         { issue_stop(); return 0u; }
 
     /* Read data bytes */
     for (i = 0u; i < len; i++)
     {
-        if (i == len - 1u)
+        if (i == (len - 1u))
         {
             /* Last byte: set NACK + STOP before reading */
             RIIC0.MR3.UINT32 |= 0x10u;     /* ACKBT = NACK */

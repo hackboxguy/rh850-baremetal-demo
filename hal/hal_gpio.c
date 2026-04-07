@@ -52,8 +52,8 @@ void hal_gpio_set_analog_input(uint8 start_bit, uint8 count)
     /* Set each analog port pin as input */
     for (i = 0u; i < count; i++)
     {
-        PORTAPMSR0 = PSR_SET(start_bit + i);
-        mask |= (uint16)(1u << (start_bit + i));
+        PORTAPMSR0 = PSR_SET((uint32)start_bit + (uint32)i);
+        mask |= (uint16)((uint32)1u << ((uint32)start_bit + (uint32)i));
     }
 
     /* Enable analog port input buffer for digital readback */
@@ -63,5 +63,5 @@ void hal_gpio_set_analog_input(uint8 start_bit, uint8 count)
 uint8 hal_gpio_read_dip(void)
 {
     return (uint8)((PORTAPPR0 >> BOARD_DIP_START_BIT) &
-                   ((1u << BOARD_DIP_COUNT) - 1u));
+                   (((uint32)1u << BOARD_DIP_COUNT) - 1u));
 }

@@ -24,8 +24,10 @@
 static void i2c_delay(void)
 {
     volatile uint32 d = I2C_DELAY_COUNT;
-    while (d--)
+    while (d-- != 0u)
+    {
         ;
+    }
 }
 
 static void sda_high(void)
@@ -83,20 +85,25 @@ static uint8 i2c_write_byte(uint8 data)
 {
     uint8 i;
     uint8 ack;
+    uint8 tx_data = data;
 
     for (i = 0u; i < 8u; i++)
     {
-        if (data & 0x80u)
+        if ((tx_data & 0x80u) != 0u)
+        {
             sda_high();
+        }
         else
+        {
             sda_low();
+        }
 
         i2c_delay();
         scl_high();
         i2c_delay();
         scl_low();
 
-        data <<= 1;
+        tx_data <<= 1;
     }
 
     /* ACK clock: release SDA, clock SCL, read SDA */
@@ -124,16 +131,22 @@ static uint8 i2c_read_byte(uint8 ack)
         i2c_delay();
         scl_high();
         i2c_delay();
-        if (sda_read())
+        if (sda_read() != 0u)
+        {
             data |= 0x01u;
+        }
         scl_low();
     }
 
     /* Send ACK/NACK */
-    if (ack)
+    if (ack != 0u)
+    {
         sda_low();
+    }
     else
+    {
         sda_high();
+    }
     i2c_delay();
     scl_high();
     i2c_delay();
@@ -147,21 +160,45 @@ static uint8 i2c_read_byte(uint8 ack)
 
 void hal_i2c_bitbang_init(void)
 {
+    uint8 i;
+
     /* Set SDA and SCL as GPIO (not alternate function) */
     PORTPMCSR10 = PSR_CLR(SDA_BIT);
     PORTPMCSR10 = PSR_CLR(SCL_BIT);
 
     /* Enable input buffer for pin readback */
-    PORTPIBC10 |= (uint16)((1u << SDA_BIT) | (1u << SCL_BIT));
+    PORTPIBC10 |= (uint16)(((uint16)1u << SDA_BIT) | ((uint16)1u << SCL_BIT));
 
     /* Release both lines (high via external pull-ups) */
     sda_high();
     scl_high();
-
-    /* Bus reset: START + STOP to clear any stuck slave */
     i2c_delay();
-    i2c_start();
-    i2c_stop();
+
+    /*
+     * Bus recovery: if a slave is stuck mid-byte (holding SDA low),
+     * clock SCL up to 9 times to let it finish. Each clock shifts
+     * out one bit; after 8 data bits + 1 ACK bit, the slave releases
+     * SDA. This handles power-cycle glitches where the MCU reset
+     * but the slave (e.g. PCF8574A) kept its state.
+     */
+    for (i = 0u; i < 9u; i++)
+    {
+        if (sda_read() != 0u)
+        {
+            break;      /* SDA is high — bus is free */
+        }
+        scl_high();
+        i2c_delay();
+        scl_low();
+        i2c_delay();
+    }
+
+    /* Generate STOP to reset bus state */
+    sda_low();
+    i2c_delay();
+    scl_high();
+    i2c_delay();
+    sda_high();
     i2c_delay();
 }
 
@@ -173,7 +210,7 @@ uint8 hal_i2c_bitbang_write(uint8 addr_7bit, const uint8 *data, uint8 len)
     i2c_start();
 
     /* Send address + W */
-    ack = i2c_write_byte((uint8)(addr_7bit << 1));
+    ack = i2c_write_byte((uint8)((uint32)addr_7bit << 1));
     if (!ack)
     {
         i2c_stop();
@@ -202,7 +239,7 @@ uint8 hal_i2c_bitbang_read(uint8 addr_7bit, uint8 *data, uint8 len)
     i2c_start();
 
     /* Send address + R */
-    if (!i2c_write_byte((uint8)((addr_7bit << 1) | 1u)))
+    if (!i2c_write_byte((uint8)(((uint32)addr_7bit << 1) | 1u)))
     {
         i2c_stop();
         return 0u;
@@ -212,7 +249,7 @@ uint8 hal_i2c_bitbang_read(uint8 addr_7bit, uint8 *data, uint8 len)
     for (i = 0u; i < len; i++)
     {
         /* ACK all bytes except the last one */
-        data[i] = i2c_read_byte((i < len - 1u) ? 1u : 0u);
+        data[i] = i2c_read_byte((i < (len - 1u)) ? 1u : 0u);
     }
 
     i2c_stop();

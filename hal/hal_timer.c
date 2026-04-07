@@ -19,9 +19,9 @@
 #define ICOSTM0     (*(volatile uint16 *)ICR_OSTM0_ADDR)
 
 /* INTC2 bit definitions */
-#define ICR_MK      (1u << 7)       /* Interrupt mask */
-#define ICR_TB      (1u << 6)       /* Table reference */
-#define ICR_RF      (1u << 12)      /* Request flag */
+#define ICR_MK      ((uint16)1u << 7)       /* Interrupt mask */
+#define ICR_TB      ((uint16)1u << 6)       /* Table reference */
+#define ICR_RF      ((uint16)1u << 12)      /* Request flag */
 
 static void (*g_timer_cb)(void);
 
@@ -33,7 +33,7 @@ void hal_timer_init(uint32 interval_us, uint32 pclk_hz,
     g_timer_cb = callback;
 
     /* Calculate compare value: CMP = (pclk * interval_us / 1000000) - 1 */
-    cmp_val = (pclk_hz / 1000000u) * interval_us - 1u;
+    cmp_val = ((pclk_hz / 1000000u) * interval_us) - 1u;
 
     /* Stop timer if running */
     OSTM0TT = 0x01u;
@@ -64,6 +64,8 @@ void hal_timer_stop(void)
 #pragma interrupt hal_ostm0_isr(enable=false, channel=84, fpu=true, callt=false)
 void hal_ostm0_isr(void)
 {
-    if (g_timer_cb)
+    if (g_timer_cb != (void *)0)
+    {
         g_timer_cb();
+    }
 }

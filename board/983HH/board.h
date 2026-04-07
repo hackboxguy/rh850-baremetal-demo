@@ -43,4 +43,7 @@
 #define BOARD_DIP_START_BIT     7
 #define BOARD_DIP_COUNT         8
 
+/* ---- Board init ---- */
+void board_init(void);
+
 #endif /* BOARD_983HH_H */

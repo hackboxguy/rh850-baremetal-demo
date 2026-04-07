@@ -165,5 +165,58 @@ info:
 	@echo "BUILD_DIR  = $(BUILD_DIR)"
 	@echo "OUT_DIR    = $(OUT_DIR)"
 
+# ---------------------------------------------------------------------------
+# MISRA C static analysis (cppcheck + misra.py addon)
+# ---------------------------------------------------------------------------
+MISRA_ADDON := misra
+MISRA_SRC   := $(wildcard hal/*.c) $(wildcard lib/*.c) \
+               $(wildcard app/*/main.c) $(wildcard board/$(BOARD)/*.c)
+MISRA_INC   := -I$(PROJ_ROOT)/device -I$(PROJ_ROOT)/board/$(BOARD) \
+               -I$(PROJ_ROOT)/hal -I$(PROJ_ROOT)/lib
+
+.PHONY: misra misra-count
+
+# Full MISRA report (all violations with file:line details)
+misra:
+	@echo "=== MISRA C analysis (cppcheck + misra.py, C:2012 rules) ==="
+	@echo "Scope: hal/ lib/ app/ board/$(BOARD)/"
+	@echo "Excluded: device/ (vendor header)"
+	@echo ""
+	cppcheck --addon=$(MISRA_ADDON) --enable=all \
+		--suppress=missingIncludeSystem \
+		--suppress=unmatchedSuppression \
+		--suppress=unusedFunction \
+		--suppress="*:$(PROJ_ROOT)/device/*" \
+		$(MISRA_INC) \
+		--platform=unspecified \
+		$(MISRA_SRC) 2>&1 | \
+		grep "misra-c2012" | \
+		sort -t: -k1,1 -k2,2n
+	@echo ""
+	@echo "Total violations:"
+	@cppcheck --addon=$(MISRA_ADDON) --enable=all \
+		--suppress=missingIncludeSystem \
+		--suppress=unmatchedSuppression \
+		--suppress=unusedFunction \
+		--suppress="*:$(PROJ_ROOT)/device/*" \
+		$(MISRA_INC) \
+		--platform=unspecified \
+		$(MISRA_SRC) 2>&1 | \
+		grep -c "misra-c2012" || true
+
+# Quick summary: violation count by rule
+misra-count:
+	@cppcheck --addon=$(MISRA_ADDON) --enable=all \
+		--suppress=missingIncludeSystem \
+		--suppress=unmatchedSuppression \
+		--suppress=unusedFunction \
+		--suppress="*:$(PROJ_ROOT)/device/*" \
+		$(MISRA_INC) \
+		--platform=unspecified \
+		$(MISRA_SRC) 2>&1 | \
+		grep "misra-c2012" | \
+		sed 's/.*\[misra-c2012-//' | sed 's/\]//' | \
+		sort | uniq -c | sort -rn
+
 clean:
 	rm -rf $(BUILD_DIR) $(OUT_DIR)
