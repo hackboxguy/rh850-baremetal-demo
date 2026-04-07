@@ -21,8 +21,8 @@ static ringbuf_t g_tx_rb;
 
 static void uart_pins_init(void)
 {
-    uint16 mask = (uint16)((1u << BOARD_UART_TX_BIT) |
-                           (1u << BOARD_UART_RX_BIT));
+    uint16 mask = (uint16)(((uint32)1u << BOARD_UART_TX_BIT) |
+                           ((uint32)1u << BOARD_UART_RX_BIT));
 
     /* AF1: PFC=0, PFCE=0, PFCAE=0 */
     PORTPFC0   &= ~mask;
@@ -56,13 +56,15 @@ void hal_uart_init(uint32 pclk_hz, uint32 baud)
     }
 
     /* BRP with rounding: (pclk + baud*nspb/2) / (baud*nspb) - 1 */
-    brp = (uint16)((pclk_hz + baud * (nspb / 2u)) / (baud * nspb) - 1u);
+    brp = (uint16)(((pclk_hz + (baud * (nspb / 2u))) / (baud * nspb)) - 1u);
 
     /* Disable and reset RLIN32 */
     RLN32LUOER = 0x00u;
     RLN32LCUC  = 0x00u;
-    while (RLN32LMST & 0x01u)
+    while ((RLN32LMST & 0x01u) != 0u)
+    {
         ;
+    }
 
     /* Configure UART mode, 8N1 */
     RLN32LMD   = 0x01u;     /* UART mode */
@@ -84,18 +86,25 @@ void hal_uart_init(uint32 pclk_hz, uint32 baud)
 void hal_uart_putc(uint8 c)
 {
     /* Wait for transmitter idle (LST.UTS bit 4 = 0) */
-    while (RLN32LST & 0x10u)
+    while ((RLN32LST & 0x10u) != 0u)
+    {
         ;
+    }
     RLN32LUTDR = (uint16)c;
 }
 
 void hal_uart_puts(const char *s)
 {
-    while (*s)
+    const char *p = s;
+
+    while (*p != '\0')
     {
-        if (*s == '\n')
+        if (*p == '\n')
+        {
             hal_uart_putc('\r');
-        hal_uart_putc((uint8)*s++);
+        }
+        hal_uart_putc((uint8)*p);
+        p++;
     }
 }
 
@@ -123,16 +132,21 @@ void hal_uart_nb_init(void)
 
 void hal_uart_nb_putc(uint8 c)
 {
-    ringbuf_put(&g_tx_rb, c);   /* Drop silently if full */
+    (void)ringbuf_put(&g_tx_rb, c);   /* Drop silently if full */
 }
 
 void hal_uart_nb_puts(const char *s)
 {
-    while (*s)
+    const char *p = s;
+
+    while (*p != '\0')
     {
-        if (*s == '\n')
+        if (*p == '\n')
+        {
             hal_uart_nb_putc('\r');
-        hal_uart_nb_putc((uint8)*s++);
+        }
+        hal_uart_nb_putc((uint8)*p);
+        p++;
     }
 }
 
@@ -148,15 +162,10 @@ uint32 hal_uart_drain(uint32 max_bytes)
     uint32 count = 0u;
     uint8  byte;
 
-    while (count < max_bytes)
+    while ((count < max_bytes) &&
+           ((RLN32LST & 0x10u) == 0u) &&
+           (ringbuf_get(&g_tx_rb, &byte) != 0u))
     {
-        /* Check if UART TX is idle (LST.UTS bit 4 = 0) */
-        if (RLN32LST & 0x10u)
-            break;              /* TX busy, try next time */
-
-        if (!ringbuf_get(&g_tx_rb, &byte))
-            break;              /* Buffer empty */
-
         RLN32LUTDR = (uint16)byte;
         count++;
     }

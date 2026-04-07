@@ -7,9 +7,6 @@
 
 #include "dr7f701686.dvf.h"
 
-/* Protected write to PROTCMD0-guarded registers (AWO domain) */
-void hal_prot_write0(volatile uint32 *reg, uint32 value);
-
 /* Protected write to PROTCMD1-guarded registers (ISO domain) */
 void hal_prot_write1(volatile uint32 *reg, uint32 value);
 

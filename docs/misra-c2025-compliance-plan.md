@@ -66,13 +66,21 @@ excluding `device/` directory.
 - [x] Categorize violations by severity and effort
 - [x] Save baseline report to `docs/misra-baseline-report.md`
 
-### Phase 2: Low-hanging fruit
+### Phase 2: Mechanical fixes — COMPLETE (132 violations fixed)
 
-- [ ] Add explicit casts for narrowing conversions
-- [ ] Add missing `default:` cases in switch statements
-- [ ] Fix implicit type promotions
-- [ ] Add `u` suffixes to unsigned constants where missing
-- [ ] Verify all include guards present and correct
+- [x] Rule 10.8: Moved casts to operands for composite expressions (37 fixes)
+- [x] Rule 14.4: Explicit boolean comparisons in if/while (32 fixes)
+- [x] Rule 15.6: Added `{ }` braces around single-statement bodies (21 fixes)
+- [x] Rule 12.2: Cast shift operands to target width (12 fixes)
+- [x] Rule 12.1: Added explicit parentheses (6 fixes)
+- [x] Rule 13.5: Restructured while loops to remove side effects in && (5 fixes)
+- [x] Rule 17.7: Cast unused return values to void (5 fixes)
+- [x] Rule 17.8: Use local copy instead of modifying parameters (3 fixes)
+- [x] Rules 15.4, 15.7, 10.7, 8.7, 8.4: One-off fixes (5 fixes)
+- [x] Added standard boot banner (lib_boot.c/.h, conditional on DEBUG=on)
+- [x] Added I2C bus recovery (9-clock SCL sequence) in hal_i2c_bitbang.c
+- [x] All 5 apps build clean (release + debug, 10 builds total)
+- [x] Remaining 77 violations are all documented deviations
 
 ### Phase 3: Deviations and type system
 

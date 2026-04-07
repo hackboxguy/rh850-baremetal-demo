@@ -7,32 +7,40 @@
  *
  * PCF8574A address: 0x38 (7-bit, A0=A1=A2=GND)
  *
- * Build: make BOARD=983HH APP=i2c_bitbang
+ * Build:
+ *   make BOARD=983HH APP=i2c_bitbang
+ *   make BOARD=983HH APP=i2c_bitbang DEBUG=on  (enables UART boot banner)
  */
 
 #include "board.h"
 #include "hal_i2c_bitbang.h"
+#include "lib_boot.h"
 
-static void delay(volatile uint32 count)
+static void delay(uint32 cnt)
 {
-    while (count--)
+    volatile uint32 d = cnt;
+    while (d-- != 0u)
+    {
         ;
+    }
 }
 
 int main(void)
 {
     uint8 val;
 
+    BOOT_BANNER("i2c_bitbang");
+
     hal_i2c_bitbang_init();
 
     for (;;)
     {
         val = 0xFFu;
-        hal_i2c_bitbang_write(0x38u, &val, 1u);
+        (void)hal_i2c_bitbang_write(0x38u, &val, 1u);
         delay(500000);
 
         val = 0x00u;
-        hal_i2c_bitbang_write(0x38u, &val, 1u);
+        (void)hal_i2c_bitbang_write(0x38u, &val, 1u);
         delay(500000);
     }
 

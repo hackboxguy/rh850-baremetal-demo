@@ -32,9 +32,9 @@
 #define ICRIIC0TEI  (*(volatile uint16 *)ICR_RIIC0_TEI_ADDR)
 
 /* INTC2 bit definitions */
-#define ICR_MK      (1u << 7)       /* Interrupt mask */
-#define ICR_TB      (1u << 6)       /* Table reference */
-#define ICR_RF      (1u << 12)      /* Request flag */
+#define ICR_MK      ((uint16)1u << 7)       /* Interrupt mask */
+#define ICR_TB      ((uint16)1u << 6)       /* Table reference */
+#define ICR_RF      ((uint16)1u << 12)      /* Request flag */
 
 /* RIIC SR2 bit definitions */
 #define SR2_TDRE    0x80u
@@ -77,37 +77,37 @@ static void riic0_pin_setup(uint8 bit)
     uint32 tmp;
 
     /* Clear input buffer and bidirectional first */
-    PORTPIBC10  &= ~(uint16)(1u << bit);
-    PORT.PBDC10 &= ~(uint16)(1u << bit);
-    PORTPM10    |= (uint16)(1u << bit);       /* Input initially */
-    PORTPMC10   &= ~(uint16)(1u << bit);      /* GPIO initially */
-    PORTPIPC10  &= ~(uint16)(1u << bit);      /* No PIPC */
+    PORTPIBC10  &= ~((uint16)1u << bit);
+    PORT.PBDC10 &= ~((uint16)1u << bit);
+    PORTPM10    |= ((uint16)1u << bit);       /* Input initially */
+    PORTPMC10   &= ~((uint16)1u << bit);      /* GPIO initially */
+    PORTPIPC10  &= ~((uint16)1u << bit);      /* No PIPC */
 
     /* Clear PDSC (drive strength) - protected write */
     tmp = PORT.PDSC10;
     PORTPPCMD10 = 0xA5u;
-    PORT.PDSC10 = (tmp & ~(uint32)(1u << bit));
-    PORT.PDSC10 = ~(tmp & ~(uint32)(1u << bit));
-    PORT.PDSC10 = (tmp & ~(uint32)(1u << bit));
+    PORT.PDSC10 = (tmp & ~((uint32)1u << bit));
+    PORT.PDSC10 = ~(tmp & ~((uint32)1u << bit));
+    PORT.PDSC10 = (tmp & ~((uint32)1u << bit));
 
     /* Set PODC (open-drain) - protected write */
     tmp = PORTPODC10;
     PORTPPCMD10 = 0xA5u;
-    PORTPODC10 = (tmp | (uint32)(1u << bit));
-    PORTPODC10 = ~(tmp | (uint32)(1u << bit));
-    PORTPODC10 = (tmp | (uint32)(1u << bit));
+    PORTPODC10 = (tmp | ((uint32)1u << bit));
+    PORTPODC10 = ~(tmp | ((uint32)1u << bit));
+    PORTPODC10 = (tmp | ((uint32)1u << bit));
 
     /* PBDC=1: bidirectional control (critical for I2C!) */
-    PORT.PBDC10 |= (uint16)(1u << bit);
+    PORT.PBDC10 |= ((uint16)1u << bit);
 
     /* AF2: PFC=1, PFCE=0, PFCAE=0 */
-    PORTPFC10   |= (uint16)(1u << bit);
-    PORTPFCE10  &= ~(uint16)(1u << bit);
-    PORTPFCAE10 &= ~(uint16)(1u << bit);
+    PORTPFC10   |= ((uint16)1u << bit);
+    PORTPFCE10  &= ~((uint16)1u << bit);
+    PORTPFCAE10 &= ~((uint16)1u << bit);
 
     /* Switch to alt function, output mode */
-    PORTPMC10 |= (uint16)(1u << bit);
-    PORTPM10  &= ~(uint16)(1u << bit);
+    PORTPMC10 |= ((uint16)1u << bit);
+    PORTPM10  &= ~((uint16)1u << bit);
 }
 
 static void riic0_pins_init(void)
@@ -202,8 +202,10 @@ void hal_riic0_isr_ti(void)
 {
     uint8 val = 0xFFu;
 
-    if (g_on_read)
+    if (g_on_read != (void *)0)
+    {
         val = g_on_read(g_reg_addr);
+    }
 
     RIIC0.DRT.UINT32 = (uint32)val;
     g_reg_addr++;               /* 16-bit wrap at 0xFFFF -> 0x0000 */
@@ -221,29 +223,29 @@ void hal_riic0_isr_ee(void)
 {
     uint32 sr2 = RIIC0.SR2.UINT32;
 
-    if (sr2 & SR2_START)
+    if ((sr2 & SR2_START) != 0u)
     {
         RIIC0.SR2.UINT32 &= ~(uint32)SR2_START;
     }
 
-    if (sr2 & SR2_NACKF)
+    if ((sr2 & SR2_NACKF) != 0u)
     {
         (void)RIIC0.DRR.UINT32;        /* Dummy read */
         RIIC0.SR2.UINT32 &= ~(uint32)SR2_NACKF;
         g_slave_state = ST_IDLE;
     }
 
-    if (sr2 & SR2_STOP)
+    if ((sr2 & SR2_STOP) != 0u)
     {
         RIIC0.SR2.UINT32 &= ~(uint32)SR2_STOP;
         /* Don't reset state if RDRF pending (STOP+RDRF race) */
-        if (!(sr2 & SR2_RDRF))
+        if ((sr2 & SR2_RDRF) == 0u)
         {
             g_slave_state = ST_IDLE;
         }
     }
 
-    if (sr2 & SR2_AL)
+    if ((sr2 & SR2_AL) != 0u)
     {
         RIIC0.SR2.UINT32 &= ~(uint32)SR2_AL;
         g_slave_state = ST_IDLE;
@@ -266,18 +268,20 @@ void hal_riic0_isr_ri(void)
     uint32 sr1 = RIIC0.SR1.UINT32;
 
     /* Address match (AAS0 flag) */
-    if (sr1 & 0x01u)
+    if ((sr1 & 0x01u) != 0u)
     {
         RIIC0.SR1.UINT32 &= ~0x01u;    /* Clear AAS0 */
         data = (uint8)RIIC0.DRR.UINT32; /* Dummy read to release SCL */
 
-        if (RIIC0.CR2.UINT32 & 0x20u)
+        if ((RIIC0.CR2.UINT32 & 0x20u) != 0u)
         {
             /* Master READ: current-address read (use existing g_reg_addr) */
             uint8 val = 0xFFu;
             g_slave_state = ST_SENDING_DATA;
-            if (g_on_read)
+            if (g_on_read != (void *)0)
+            {
                 val = g_on_read(g_reg_addr);
+            }
 
             RIIC0.DRT.UINT32 = (uint32)val;
 
@@ -304,7 +308,7 @@ void hal_riic0_isr_ri(void)
     if (g_slave_state == ST_ADDR_HI)
     {
         /* First byte after slave address = addr high byte */
-        g_reg_addr = (uint16)data << 8;
+        g_reg_addr = (uint16)((uint16)data << 8);
         g_slave_state = ST_ADDR_LO;
     }
     else if (g_slave_state == ST_ADDR_LO)
@@ -319,24 +323,30 @@ void hal_riic0_isr_ri(void)
     else if (g_slave_state == ST_RECEIVING_DATA)
     {
         /* Subsequent bytes = register data */
-        if (g_on_write)
+        if (g_on_write != (void *)0)
+        {
             g_on_write(g_reg_addr, data);
+        }
         g_reg_addr++;               /* Auto-increment with wrap */
 
         DBG_PUTS("=");
         DBG_HEX8(data);
 
         /* Handle STOP+RDRF race */
-        if (RIIC0.SR2.UINT32 & SR2_STOP)
+        if ((RIIC0.SR2.UINT32 & SR2_STOP) != 0u)
         {
             RIIC0.SR2.UINT32 &= ~(uint32)SR2_STOP;
             g_slave_state = ST_IDLE;
         }
     }
-    else if (g_slave_state == ST_SENDING_DATA ||
-             g_slave_state == ST_SEND_DONE)
+    else if ((g_slave_state == ST_SENDING_DATA) ||
+             (g_slave_state == ST_SEND_DONE))
     {
         (void)data;     /* Ignore data during TX phase */
+    }
+    else
+    {
+        /* No action required */
     }
 }
 
