@@ -154,11 +154,11 @@ void hal_riic_slave_init(uint8 slave_addr,
     /* Enable slave address 0 + general call */
     RIIC0.SER.UINT32 = 0x09u;
 
-    /* MR1: CKS=/8 (40 MHz / 8 = 5 MHz internal reference) */
-    RIIC0.MR1.UINT32 = 0x30u;
+    /* MR1: CKS divider (board-specific for target I2C speed) */
+    RIIC0.MR1.UINT32 = BOARD_I2C_MR1;
 
-    /* BRL for SCL synchronization */
-    RIIC0.BRL.UINT32 = 0xF7u;          /* 0xE0 | 0x17 */
+    /* BRL: SCL low period for clock synchronization (board-specific) */
+    RIIC0.BRL.UINT32 = BOARD_I2C_BRL;
 
     /* MR3: single-stage noise filter */
     RIIC0.MR3.UINT32 = 0x00u;

@@ -1,8 +1,7 @@
 /*
  * hal_gpio.c - GPIO driver for RH850/F1KM-S1
  *
- * Supports ports 0, 9, 10 (used on 983HH board).
- * Extend the switch statements to add more ports.
+ * Supports ports 0, 8, 9, 10, 11.
  */
 
 #include "hal_gpio.h"
@@ -18,6 +17,10 @@ void hal_gpio_set_output(uint8 port, uint8 bit)
         PORTPMCSR0 = clr;      /* GPIO mode */
         PORTPMSR0  = clr;      /* Output */
         break;
+    case 8:
+        PORTPMCSR8 = clr;
+        PORTPMSR8  = clr;
+        break;
     case 9:
         PORTPMCSR9 = clr;
         PORTPMSR9  = clr;
@@ -25,6 +28,10 @@ void hal_gpio_set_output(uint8 port, uint8 bit)
     case 10:
         PORTPMCSR10 = clr;
         PORTPMSR10  = clr;
+        break;
+    case 11:
+        PORTPMCSR11 = clr;
+        PORTPMSR11  = clr;
         break;
     default:
         break;
@@ -38,8 +45,10 @@ void hal_gpio_write(uint8 port, uint8 bit, uint8 value)
     switch (port)
     {
     case 0:  PORTPSR0  = cmd; break;
+    case 8:  PORTPSR8  = cmd; break;
     case 9:  PORTPSR9  = cmd; break;
     case 10: PORTPSR10 = cmd; break;
+    case 11: PORTPSR11 = cmd; break;
     default: break;
     }
 }

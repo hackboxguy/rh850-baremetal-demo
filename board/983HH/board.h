@@ -33,6 +33,9 @@
 #define BOARD_I2C_SCL_BIT       3
 #define BOARD_I2C_AF            2           /* AF2 for RIIC0 */
 #define BOARD_I2C_SLAVE_ADDR    0x50u       /* Default slave address */
+/* ~100 kHz standard mode: CKS=/8 (5 MHz ref) */
+#define BOARD_I2C_MR1           0x30u       /* CKS=/8 */
+#define BOARD_I2C_BRL           0xF7u       /* 0xE0 | 0x17 (23 cycles low) */
 
 /* ---- LED ---- */
 #define BOARD_LED_PORT          9
