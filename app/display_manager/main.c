@@ -235,6 +235,7 @@ static int16 adc_to_temp_degc10(uint16 adc_raw)
 /* ---- Timer callback ---- */
 
 static volatile uint8 g_adc_tick;   /* Counts 1ms ticks for 100ms ADC interval */
+static volatile uint8 g_log_tick;   /* Counts ADC samples for 1s debug log */
 
 static void timer_callback(void)
 {
@@ -249,6 +250,20 @@ static void timer_callback(void)
         g_adc_tick = 0u;
         g_adc_raw = hal_adc_read();
         g_temp_degc10 = adc_to_temp_degc10(g_adc_raw);
+
+        /* Log every 1s (every 10th ADC sample) */
+        g_log_tick++;
+        if (g_log_tick >= 10u)
+        {
+            g_log_tick = 0u;
+            DBG_PUTS("ADC=");
+            DBG_HEX8((uint8)(g_adc_raw >> 8));
+            DBG_HEX8((uint8)g_adc_raw);
+            DBG_PUTS(" T=");
+            DBG_HEX8((uint8)((uint16)g_temp_degc10 >> 8));
+            DBG_HEX8((uint8)((uint16)g_temp_degc10));
+            DBG_PUTS("\n");
+        }
     }
 }
 
@@ -285,6 +300,7 @@ int main(void)
     g_adc_raw = 0u;
     g_temp_degc10 = 0;
     g_adc_tick = 0u;
+    g_log_tick = 0u;
 
     BOOT_BANNER("display_manager");
 
