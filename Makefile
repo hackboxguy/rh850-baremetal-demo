@@ -232,6 +232,6 @@ size:
 clean:
 	rm -rf $(BUILD_DIR) $(OUT_DIR)
 
-# Clean all apps and build artifacts
+# Clean all apps and build artifacts (all boards)
 clean-all:
-	rm -rf /tmp/rh850_$(BOARD)_* output/
+	rm -rf /tmp/rh850_* output/
