@@ -60,11 +60,11 @@ excluding `device/` directory.
 
 - [x] Create `misrac-2025` branch
 - [x] Document compliance plan (this file)
-- [ ] Install cppcheck on build system
-- [ ] Add `make misra` target to Makefile
-- [ ] Run baseline scan, record initial violation count
-- [ ] Categorize violations by severity and effort
-- [ ] Save baseline report to `docs/misra-baseline-report.md`
+- [x] Install cppcheck 2.13.0 on build system
+- [x] Add `make misra` and `make misra-count` targets to Makefile
+- [x] Run baseline scan: **209 violations across 21 rules in 17 files**
+- [x] Categorize violations by severity and effort
+- [x] Save baseline report to `docs/misra-baseline-report.md`
 
 ### Phase 2: Low-hanging fruit
 
