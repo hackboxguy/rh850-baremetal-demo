@@ -99,6 +99,43 @@ Set at build time: `make VERSION=01.10`
 | `0x0200` | `LED_CONTROL` | RW | LED state (bit0 = P9_6, 1=ON 0=OFF) |
 | `0x0201-0x02FF` | (reserved) | RW | Reserved for: GPIO outputs, PWM duty, mode select |
 
+## Page 0x10: Diagnostics
+
+| Address | Name | Access | Format | Description |
+|---------|------|--------|--------|-------------|
+| `0x1000` | `TEMP_BL_RAW_HI` | RO | uint16 BE | Backlight NTC ADC raw value (bits 11:8) |
+| `0x1001` | `TEMP_BL_RAW_LO` | RO | uint16 BE | Backlight NTC ADC raw value (bits 7:0) |
+| `0x1002` | `TEMP_BL_DEGC_HI` | RO | int16 BE | Backlight temperature x10 (high byte) |
+| `0x1003` | `TEMP_BL_DEGC_LO` | RO | int16 BE | Backlight temperature x10 (low byte) |
+| `0x1004-0x1FFF` | (reserved) | RO | | Reserved for: supply voltages, FPGA temp, error counters |
+
+### Temperature Format
+
+Signed 16-bit integer, 0.1 degC resolution, big-endian:
+
+| Bytes | Value | Temperature |
+|-------|-------|-------------|
+| `0x00 0xFD` | 253 | 25.3 C |
+| `0x01 0x90` | 400 | 40.0 C |
+| `0xFF 0x9C` | -100 | -10.0 C |
+
+Pi4 Python example:
+```python
+import struct, subprocess
+raw = subprocess.check_output(
+    ["i2ctransfer", "-y", "1", "w2@0x50", "0x10", "0x02", "r2@0x50"])
+val = struct.unpack(">h", bytes([int(x, 16) for x in raw.split()]))[0]
+print(f"Temperature: {val / 10.0:.1f} C")
+```
+
+### NTC Sensor
+
+- Physical pin: AP0_0 (ADCA0 channel ANI00)
+- Sensor: 10K NTC, Beta=3950 (B25/85)
+- Circuit: Vcc --- 10K pullup --- ADC --- NTC --- GND
+- ADC: 12-bit, 3.3V reference
+- Sampling: every 100ms via OSTM0 timer
+
 ## Pi4 Usage Examples
 
 All examples use `i2ctransfer` (supports 16-bit sub-addressing):
@@ -126,6 +163,18 @@ i2ctransfer -y 1 w2@0x50 0x00 0x00 r16@0x50
 
 # Current-address read (continues from last address)
 i2ctransfer -y 1 r4@0x50
+
+# Read backlight NTC raw ADC (2 bytes from 0x1000)
+i2ctransfer -y 1 w2@0x50 0x10 0x00 r2@0x50
+# Example output: 0x08 0x00  -> raw ADC = 2048
+
+# Read backlight temperature (2 bytes from 0x1002, signed, /10 for degC)
+i2ctransfer -y 1 w2@0x50 0x10 0x02 r2@0x50
+# Example output: 0x00 0xFD  -> 253 = 25.3 C
+
+# Read all diagnostics at once (4 bytes from 0x1000)
+i2ctransfer -y 1 w2@0x50 0x10 0x00 r4@0x50
+# Example output: 0x08 0x00 0x00 0xFD  -> raw=2048, temp=25.3C
 ```
 
 **Note:** `i2cget`/`i2cset` only support 8-bit sub-addressing and cannot

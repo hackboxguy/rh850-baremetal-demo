@@ -42,6 +42,19 @@
 #define BOARD_DIP_START_BIT     7
 #define BOARD_DIP_COUNT         8
 
+/* ---- Backlight NTC temperature sensor (AP0_0 = ANI000) ---- */
+#define BOARD_NTC_ADC_CHANNEL   0           /* ADCA0 physical channel ANI00 */
+/*
+ * NTC parameters: 10K ohm at 25C, Beta=3950 (B25/85).
+ * Assumes voltage divider: Vcc --- [R_pullup] --- ADC --- [NTC] --- GND
+ * ADC reference = 3.3V, 12-bit (0-4095).
+ * Update BOARD_NTC_BETA when exact NTC datasheet is available.
+ */
+#define BOARD_NTC_BETA          3950u       /* Beta value (K) */
+#define BOARD_NTC_R25           10000u      /* Resistance at 25C (ohms) */
+#define BOARD_NTC_R_PULLUP      10000u      /* Pull-up resistor (ohms) */
+#define BOARD_NTC_T25_K         29815u      /* 25C in Kelvin x100 (298.15K) */
+
 /* ---- Power control pins ---- */
 
 /* Main power */
