@@ -101,7 +101,7 @@ LINK_SECTIONS := RESET/$(RESET_ADDR),EIINTTBL/00000200,.text,.const,.INIT_DSEC.c
 # ---------------------------------------------------------------------------
 # Build rules
 # ---------------------------------------------------------------------------
-.PHONY: all clean info
+.PHONY: all clean clean-all info
 
 all: $(OUT_DIR)/$(TARGET).bin
 
@@ -220,3 +220,7 @@ misra-count:
 
 clean:
 	rm -rf $(BUILD_DIR) $(OUT_DIR)
+
+# Clean all apps and build artifacts
+clean-all:
+	rm -rf /tmp/rh850_$(BOARD)_* output/
