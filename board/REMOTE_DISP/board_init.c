@@ -379,7 +379,12 @@ void board_init(void)
 
 void board_power_down(void)
 {
-    /* Reverse order of board_init steps 8..2 */
+    /*
+     * Reverse order of board_init steps 8..3.
+     * Main power (step 2: 5V, 3.3V, PMIC) is NOT disabled —
+     * the MCU runs on these rails and must stay powered to
+     * monitor PCL for wake-up.
+     */
 
     /* 8. LCD shutdown (assert resets, power off) */
     lcd_shutdown();
@@ -396,6 +401,5 @@ void board_power_down(void)
     /* 3. FPGA power rails disable */
     power_fpga_disable();
 
-    /* 2. Main power supplies disable */
-    power_main_disable();
+    /* Note: step 2 (power_main_disable) intentionally skipped */
 }
