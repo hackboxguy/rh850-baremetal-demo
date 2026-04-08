@@ -420,10 +420,13 @@ void board_power_on(void)
     /*
      * Re-power after board_power_down().
      * Deserializer and main power are still running.
-     * Re-init FPGA + LCD + backlight.
+     * Re-init FPGA + SPI CS + backlight + LCD.
      */
     power_fpga_enable();
     fpga_program_and_reset();
+    /* Extra delay: FPGA needs time to load config after re-power */
+    delay_ms(50);
+    spi_cs_init();
     backlight_enable();
     lcd_reset_sequence();
 }
