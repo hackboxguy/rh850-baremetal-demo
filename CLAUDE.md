@@ -131,7 +131,7 @@ Register map (see `docs/i2c_register_map.md` for full spec):
 | `0x0000-0x00FF` | Device Info (RO) | FW version 0x0000-0x0001, build date/time 0x0002-0x0007 |
 | `0x0100-0x01FF` | Status (RO) | Display state at 0x0100, DIP switches (983HH) |
 | `0x0200-0x02FF` | Control (RW) | Display power at 0x0200, LED (983HH) |
-| `0x0300-0x03FF` | Debug (RW) | Cmd 0x0300, status 0x0301, log 0x0302, scan buf 0x0380-03FF |
+| `0x0300-0x03FF` | Debug (RW) | Cmd, scan buf 0x0380, I2C bridge 0x0310-032F |
 | `0x1000-0x1FFF` | Diagnostics (RO) | Backlight NTC: raw ADC 0x1000-1001, temp 0x1002-1003 |
 | `0xF000-0xFEFF` | Firmware Update | (future: image staging) |
 | `0xFF00-0xFFFF` | Bootloader | (future: update trigger, CRC) |
@@ -164,6 +164,10 @@ i2ctransfer -y 1 w2@0x66 0x03 0x03 r1@0x66     # Read device count
 i2ctransfer -y 1 w2@0x66 0x03 0x80 r128@0x66   # Read scan buffer
 i2ctransfer -y 1 w3@0x66 0x03 0x02 0x00        # Mute debug
 i2ctransfer -y 1 w3@0x66 0x03 0x02 0x01        # Unmute debug
+# I2C bridge: read RTQ6749 (0x6B) fault reg (0x1D), 1 byte
+i2ctransfer -y 1 w6@0x66 0x03 0x10 0x6B 0x1D 0x01 0x01  # setup+read
+i2ctransfer -y 1 w2@0x66 0x03 0x14 r1@0x66               # poll status
+i2ctransfer -y 1 w2@0x66 0x03 0x20 r1@0x66               # read result
 ```
 
 ## ADC / NTC Temperature Monitoring (REMOTE_DISP)

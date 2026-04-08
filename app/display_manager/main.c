@@ -78,6 +78,26 @@
 
 #define SCAN_BUF_SIZE       128u        /* 7-bit address space: 0x00-0x7F */
 
+/* I2C bridge registers (0x0310-0x032F) */
+#define REG_BRIDGE_SLAVE    0x0310u     /* Target 7-bit slave address */
+#define REG_BRIDGE_REG      0x0311u     /* Target register address */
+#define REG_BRIDGE_LEN      0x0312u     /* Bytes to read/write (1-16) */
+#define REG_BRIDGE_CMD      0x0313u     /* 0x00=idle, 0x01=read, 0x02=write */
+#define REG_BRIDGE_STATUS   0x0314u     /* 0x00=idle, 0x01=running, 0x02=done, 0xFF=error */
+#define REG_BRIDGE_DATA     0x0320u     /* 16-byte data buffer (0x0320-0x032F) */
+#define REG_BRIDGE_DATA_END 0x032Fu
+
+#define BRIDGE_CMD_NONE     0x00u
+#define BRIDGE_CMD_READ     0x01u
+#define BRIDGE_CMD_WRITE    0x02u
+
+#define BRIDGE_STATUS_IDLE  0x00u
+#define BRIDGE_STATUS_RUN   0x01u
+#define BRIDGE_STATUS_DONE  0x02u
+#define BRIDGE_STATUS_ERR   0xFFu
+
+#define BRIDGE_DATA_SIZE    16u
+
 /* Page 0x10: Diagnostics */
 #define REG_TEMP_BL_RAW_HI  0x1000u
 #define REG_TEMP_BL_RAW_LO  0x1001u
@@ -109,6 +129,14 @@ static volatile uint8  g_dbg_status;       /* Debug status register */
 static volatile uint8  g_dbg_i2c_log;      /* I2C slave debug: 1=on, 0=off */
 static volatile uint8  g_scan_buf[SCAN_BUF_SIZE]; /* 0=no device, 1=ACK */
 static volatile uint8  g_scan_dev_count;   /* Number of devices found */
+
+/* I2C bridge state */
+static volatile uint8  g_bridge_slave;     /* Target 7-bit slave address */
+static volatile uint8  g_bridge_reg;       /* Target register address */
+static volatile uint8  g_bridge_len;       /* Bytes to read/write (1-16) */
+static volatile uint8  g_bridge_cmd;       /* Command: 0=idle, 1=read, 2=write */
+static volatile uint8  g_bridge_status;    /* Status: 0=idle, 1=run, 2=done, FF=err */
+static volatile uint8  g_bridge_data[BRIDGE_DATA_SIZE]; /* Data buffer */
 
 /* ---- ADC / NTC conversion ---- */
 
@@ -272,7 +300,25 @@ static void on_write(uint16 reg, uint8 val)
         g_dbg_i2c_log = (val != 0u) ? 1u : 0u;
         g_riic_slave_dbg_en = g_dbg_i2c_log;
         break;
+    /* I2C bridge registers */
+    case REG_BRIDGE_SLAVE:
+        g_bridge_slave = val;
+        break;
+    case REG_BRIDGE_REG:
+        g_bridge_reg = val;
+        break;
+    case REG_BRIDGE_LEN:
+        g_bridge_len = (val > BRIDGE_DATA_SIZE) ? BRIDGE_DATA_SIZE : val;
+        break;
+    case REG_BRIDGE_CMD:
+        g_bridge_cmd = val;
+        break;
     default:
+        /* Bridge data buffer: 0x0320-0x032F */
+        if ((reg >= REG_BRIDGE_DATA) && (reg <= REG_BRIDGE_DATA_END))
+        {
+            g_bridge_data[reg - REG_BRIDGE_DATA] = val;
+        }
         break;
     }
 }
@@ -295,12 +341,24 @@ static uint8 on_read(uint16 reg)
     case REG_DBG_STATUS:      return g_dbg_status;
     case REG_DBG_I2C_LOG:     return g_dbg_i2c_log;
     case REG_SCAN_DEV_COUNT:  return g_scan_dev_count;
+    /* I2C bridge registers */
+    case REG_BRIDGE_SLAVE:    return g_bridge_slave;
+    case REG_BRIDGE_REG:      return g_bridge_reg;
+    case REG_BRIDGE_LEN:      return g_bridge_len;
+    case REG_BRIDGE_CMD:      return g_bridge_cmd;
+    case REG_BRIDGE_STATUS:   return g_bridge_status;
+    /* Diagnostics */
     case REG_TEMP_BL_RAW_HI:  return (uint8)(g_adc_raw >> 8);
     case REG_TEMP_BL_RAW_LO:  return (uint8)(g_adc_raw);
     case REG_TEMP_BL_DEG_HI:  return (uint8)((uint16)g_temp_degc10 >> 8);
     case REG_TEMP_BL_DEG_LO:  return (uint8)((uint16)g_temp_degc10);
     default:
-        /* Scan buffer: 0x0380-0x03FF maps to g_scan_buf[0..127] */
+        /* Bridge data buffer: 0x0320-0x032F */
+        if ((reg >= REG_BRIDGE_DATA) && (reg <= REG_BRIDGE_DATA_END))
+        {
+            return g_bridge_data[reg - REG_BRIDGE_DATA];
+        }
+        /* Scan buffer: 0x0380-0x03FF */
         if ((reg >= REG_SCAN_BUF_START) && (reg <= REG_SCAN_BUF_END))
         {
             return g_scan_buf[reg - REG_SCAN_BUF_START];
@@ -339,6 +397,69 @@ static void display_power_off(void)
     g_temp_degc10 = 0;
     g_disp_state = DISP_OFF;
     DBG_PUTS("DISP OFF\n");
+}
+
+/* ---- I2C bridge execution ---- */
+
+static void bridge_execute(void)
+{
+    uint8 ok;
+    uint8 i;
+
+    if (g_bridge_len == 0u)
+    {
+        g_bridge_status = BRIDGE_STATUS_ERR;
+        return;
+    }
+    if (g_bridge_len > BRIDGE_DATA_SIZE)
+    {
+        g_bridge_status = BRIDGE_STATUS_ERR;
+        return;
+    }
+
+    g_bridge_status = BRIDGE_STATUS_RUN;
+
+    if (g_bridge_cmd == BRIDGE_CMD_READ)
+    {
+        /*
+         * I2C read: write register address, then read data.
+         * Sequence: START + [slave+W] + [reg_addr] + RESTART + [slave+R] + [data...] + STOP
+         */
+        ok = hal_i2c1_bitbang_write(g_bridge_slave, &g_bridge_reg, 1u);
+        if (ok != 0u)
+        {
+            /* Cast away volatile for the read call (data copied after) */
+            uint8 tmp[BRIDGE_DATA_SIZE];
+            ok = hal_i2c1_bitbang_read(g_bridge_slave, tmp, g_bridge_len);
+            if (ok != 0u)
+            {
+                for (i = 0u; i < g_bridge_len; i++)
+                {
+                    g_bridge_data[i] = tmp[i];
+                }
+            }
+        }
+    }
+    else if (g_bridge_cmd == BRIDGE_CMD_WRITE)
+    {
+        /*
+         * I2C write: send register address + data in one transaction.
+         * Sequence: START + [slave+W] + [reg_addr] + [data...] + STOP
+         */
+        uint8 tmp[BRIDGE_DATA_SIZE + 1u];
+        tmp[0] = g_bridge_reg;
+        for (i = 0u; i < g_bridge_len; i++)
+        {
+            tmp[i + 1u] = g_bridge_data[i];
+        }
+        ok = hal_i2c1_bitbang_write(g_bridge_slave, tmp, g_bridge_len + 1u);
+    }
+    else
+    {
+        ok = 0u;
+    }
+
+    g_bridge_status = (ok != 0u) ? BRIDGE_STATUS_DONE : BRIDGE_STATUS_ERR;
 }
 
 /* ---- I2C1 bus scan ---- */
@@ -460,6 +581,18 @@ int main(void)
     g_dbg_i2c_log = 1u;    /* I2C slave debug on by default */
     g_scan_dev_count = 0u;
     scan_flush();
+    g_bridge_slave = 0u;
+    g_bridge_reg = 0u;
+    g_bridge_len = 0u;
+    g_bridge_cmd = BRIDGE_CMD_NONE;
+    g_bridge_status = BRIDGE_STATUS_IDLE;
+    {
+        uint8 bi;
+        for (bi = 0u; bi < BRIDGE_DATA_SIZE; bi++)
+        {
+            g_bridge_data[bi] = 0u;
+        }
+    }
 
     /*
      * Assert 3.3V self-hold FIRST — before anything else.
@@ -584,6 +717,13 @@ int main(void)
             default:
                 break;
             }
+        }
+
+        /* ---- I2C bridge command handler ---- */
+        if (g_bridge_cmd != BRIDGE_CMD_NONE)
+        {
+            bridge_execute();
+            g_bridge_cmd = BRIDGE_CMD_NONE;
         }
     }
 

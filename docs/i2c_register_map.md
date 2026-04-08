@@ -152,7 +152,15 @@ Default I2C power state = ON at boot. Read current state at `0x0100`.
 | `0x0301` | `DBG_STATUS` | RO | Command status: 0=idle, 1=running, 2=done |
 | `0x0302` | `DBG_I2C_LOG` | RW | I2C slave debug prints: 0x00=off, 0x01=on (default) |
 | `0x0303` | `SCAN_DEV_COUNT` | RO | Number of I2C1 devices found in last scan |
-| `0x0304-0x037F` | (reserved) | | Future: FPGA status, deser registers, etc. |
+| `0x0304-0x030F` | (reserved) | | |
+| `0x0310` | `BRIDGE_SLAVE` | RW | I2C bridge: target 7-bit slave address |
+| `0x0311` | `BRIDGE_REG` | RW | I2C bridge: target register address |
+| `0x0312` | `BRIDGE_LEN` | RW | I2C bridge: bytes to read/write (1-16) |
+| `0x0313` | `BRIDGE_CMD` | RW | I2C bridge: 0x00=idle, 0x01=read, 0x02=write |
+| `0x0314` | `BRIDGE_STATUS` | RO | I2C bridge: 0x00=idle, 0x01=run, 0x02=done, 0xFF=error |
+| `0x0315-0x031F` | (reserved) | | |
+| `0x0320-0x032F` | `BRIDGE_DATA` | RW | I2C bridge: 16-byte data buffer |
+| `0x0330-0x037F` | (reserved) | | |
 | `0x0380-0x03FF` | `SCAN_BUFFER` | RO | 128 bytes: scan result per 7-bit address |
 
 ### Debug Commands (write to 0x0300)
@@ -229,10 +237,93 @@ Useful for suppressing noise when reading the terminal for other output.
 
 ```bash
 # Disable I2C slave transaction prints
-i2ctransfer -y 1 w3@0x50 0x03 0x02 0x00
+i2ctransfer -y 1 w3@0x66 0x03 0x02 0x00
 
 # Re-enable
-i2ctransfer -y 1 w3@0x50 0x03 0x02 0x01
+i2ctransfer -y 1 w3@0x66 0x03 0x02 0x01
+```
+
+### I2C Bridge (relay to internal I2C1 bus)
+
+Allows Pi4 to read/write any I2C device on the F1KM's internal I2C1 bus
+(P8_0/P8_1) via the external I2C0 slave interface. Works in both release
+and debug builds.
+
+**Bridge registers (0x0310-0x032F):**
+
+| Register | Name | Description |
+|----------|------|-------------|
+| `0x0310` | `BRIDGE_SLAVE` | Target 7-bit slave address |
+| `0x0311` | `BRIDGE_REG` | Target register address |
+| `0x0312` | `BRIDGE_LEN` | Number of bytes to read/write (1-16) |
+| `0x0313` | `BRIDGE_CMD` | 0x00=idle, 0x01=read, 0x02=write |
+| `0x0314` | `BRIDGE_STATUS` | 0x00=idle, 0x01=running, 0x02=done, 0xFF=error |
+| `0x0320-0x032F` | `BRIDGE_DATA` | 16-byte data buffer |
+
+**Read example — RTQ6749 PMIC fault register (slave 0x6B, reg 0x1D):**
+
+```bash
+# Single-shot setup (burst write: slave, reg, len, cmd)
+i2ctransfer -y 1 w6@0x66 0x03 0x10 0x6B 0x1D 0x01 0x01
+
+# Poll status until done (0x02) or error (0xFF)
+i2ctransfer -y 1 w2@0x66 0x03 0x14 r1@0x66
+
+# Read result (1 byte)
+i2ctransfer -y 1 w2@0x66 0x03 0x20 r1@0x66
+```
+
+**Write example — write 0x55 to slave 0x6B register 0x10:**
+
+```bash
+# Set data first
+i2ctransfer -y 1 w3@0x66 0x03 0x20 0x55
+
+# Setup and trigger (slave, reg, len, cmd=write)
+i2ctransfer -y 1 w6@0x66 0x03 0x10 0x6B 0x10 0x01 0x02
+
+# Poll status
+i2ctransfer -y 1 w2@0x66 0x03 0x14 r1@0x66
+```
+
+**Multi-byte read — read 4 bytes from slave 0x30 starting at reg 0x00:**
+
+```bash
+i2ctransfer -y 1 w6@0x66 0x03 0x10 0x30 0x00 0x04 0x01
+# Poll status...
+i2ctransfer -y 1 w2@0x66 0x03 0x20 r4@0x66
+```
+
+Python example:
+```python
+import subprocess, time
+
+def bridge_read(slave, reg, length):
+    """Read from internal I2C device via F1KM bridge."""
+    # Setup + trigger (burst write to 0x0310)
+    subprocess.run(["i2ctransfer", "-y", "1",
+        f"w6@0x66", "0x03", "0x10",
+        f"0x{slave:02X}", f"0x{reg:02X}", f"0x{length:02X}", "0x01"])
+    # Poll status
+    while True:
+        r = subprocess.check_output(["i2ctransfer", "-y", "1",
+            "w2@0x66", "0x03", "0x14", "r1@0x66"])
+        status = int(r.strip().split()[0], 16)
+        if status == 0x02: break  # done
+        if status == 0xFF: return None  # error
+        time.sleep(0.01)
+    # Read data
+    r = subprocess.check_output(["i2ctransfer", "-y", "1",
+        "w2@0x66", "0x03", "0x20", f"r{length}@0x66"])
+    return [int(x, 16) for x in r.strip().split()]
+
+# Read RTQ6749 fault register
+fault = bridge_read(0x6B, 0x1D, 1)
+print(f"PMIC fault: 0x{fault[0]:02X}")
+
+# Read RTQ6749 channel status
+status = bridge_read(0x6B, 0x16, 1)
+print(f"Channel status: 0x{status[0]:02X}")
 ```
 
 ## Page 0x10: Diagnostics
