@@ -2,35 +2,41 @@
 
 ## Project Overview
 
-Bare-metal C firmware for Renesas RH850/F1KM-S1 MCU (R7F7016863) on the
-983HH board. Built with CC-RH compiler and GNU Make. No RTOS — pure
+Bare-metal C firmware for Renesas RH850/F1KM-S1 MCU (R7F7016863), supporting
+multiple boards. Built with CC-RH compiler and GNU Make. No RTOS — pure
 bare-metal with interrupt-driven peripherals.
 
 **Target use case:** Automotive remote displays with built-in RH850 MCU,
-evolving toward diagnostics, monitoring, I2C-based firmware updates, and
-bootloader failsafe mechanisms.
+providing diagnostics, monitoring, I2C-based communication, and future
+firmware update / bootloader mechanisms.
+
+## Supported Boards
+
+| Board | Description | Apps |
+|-------|-------------|------|
+| `983HH` | Dev board with LED, DIP switches, PCF8574A I2C expander | blink_led, mirror_dip, i2c_bitbang, i2c_master_pcf8574, i2c_slave |
+| `REMOTE_DISP` | Automotive remote display (15.6" LCD, FPGA, FPD-Link deserializer, NTC) | display_manager |
 
 ## Build System
 
 ```bash
-# Basic build
+# 983HH examples
 make BOARD=983HH APP=blink_led
+make BOARD=983HH APP=i2c_slave DEBUG=on VERSION=01.10
 
-# With debug UART output
-make BOARD=983HH APP=i2c_slave DEBUG=on
-
-# With firmware version
-make BOARD=983HH APP=i2c_slave VERSION=01.10
+# REMOTE_DISP display manager
+make BOARD=REMOTE_DISP APP=display_manager
+make BOARD=REMOTE_DISP APP=display_manager DEBUG=on VERSION=01.00
 
 # MISRA static analysis
 make misra          # Full report
 make misra-count    # Summary by rule
 
-# Show config
-make info
-
-# Clean (must specify APP)
-make BOARD=983HH APP=i2c_slave clean
+# Utilities
+make info                                          # Show config
+make BOARD=983HH APP=i2c_slave size                # Link size vs 256KB limit
+make BOARD=983HH APP=i2c_slave clean               # Clean specific app
+make clean-all                                     # Clean all boards/apps
 ```
 
 - **Compiler:** CC-RH V2.07.00 at `/usr/local/Renesas/CC-RH/V2.07.00/`
@@ -46,6 +52,7 @@ make BOARD=983HH APP=i2c_slave clean
   it's not included by default.
 - **Vendor types:** `uint32`, `uint16`, `uint8` from `dr7f701686.dvf.h`
   (not `stdint.h`). These are `unsigned long`, `unsigned short`, `unsigned char`.
+- **No signed types in dvf.h:** `int16` and `int32` are defined in `hal_adc.h`.
 - **Compiler extensions:** `#pragma interrupt(...)`, `__EI()`, `__nop()` are
   CC-RH specific and required for RH850 interrupt handling.
 - **RIIC register access:** Use `.UINT32` (32-bit) access with values in the
@@ -60,30 +67,37 @@ rh850-baremetal-demo/
 ├── startup/
 │   ├── boot.asm               Exception vectors, EIINTTBL (512 slots), register init
 │   └── cstart.asm             Stack (4KB), BSS/data init, FPU, jump to main
-├── board/983HH/
-│   ├── board.h                Pin/clock defines + board_init() declaration
-│   ├── board_init.c           LED + DIP switch GPIO init
-│   └── board_vectors.h        INTC2 addresses: RIIC0 ch76-79, OSTM0 ch84
+├── board/
+│   ├── 983HH/                 Dev board: LED, DIP switches, PCF8574A
+│   │   ├── board.h            Pin/clock defines, BOARD_NAME, I2C speed (100kHz)
+│   │   ├── board_init.c       LED + DIP switch GPIO init
+│   │   └── board_vectors.h    INTC2 addresses: RIIC0 ch76-79, OSTM0 ch84
+│   └── REMOTE_DISP/           Automotive remote display
+│       ├── board.h            Power pins, NTC params, I2C speed (400kHz)
+│       ├── board_init.c       Full power-up sequence (7 stages with delays)
+│       └── board_vectors.h    Same interrupt channels as 983HH
 ├── hal/
 │   ├── hal_clock.c/.h         PLL1 init, prot_write0/1 helpers
-│   ├── hal_gpio.c/.h          GPIO with PSR_SET/PSR_CLR atomic macros
+│   ├── hal_gpio.c/.h          GPIO ports 0,8,9,10,11 with PSR atomic macros
 │   ├── hal_uart.c/.h          RLIN32 UART: blocking + non-blocking (ring buffer)
+│   ├── hal_adc.c/.h           ADCA0: polling single-channel 12-bit ADC
 │   ├── hal_riic_slave.c/.h    RIIC0 slave: interrupt-driven, 16-bit sub-addressing
 │   ├── hal_riic_master.c/.h   RIIC0 master: polling
 │   ├── hal_i2c_bitbang.c/.h   Bit-bang I2C with bus recovery (9-clock SCL)
-│   └── hal_timer.c/.h         OSTM0 interval timer (1ms for ring buffer drain)
+│   └── hal_timer.c/.h         OSTM0 interval timer (1ms)
 ├── lib/
 │   ├── lib_boot.c/.h          Standard boot banner (conditional on DEBUG=on)
 │   ├── lib_debug.h            DBG_PUTS/DBG_HEX8 → non-blocking ring buffer
 │   └── lib_ringbuf.c/.h       Lock-free SPSC ring buffer (512 bytes)
 ├── app/
-│   ├── blink_led/main.c       LED blink (no PLL)
-│   ├── mirror_dip/main.c      DIP switch → LED (no PLL)
-│   ├── i2c_bitbang/main.c     PCF8574A via bit-bang I2C (no PLL)
-│   ├── i2c_master_pcf8574/main.c  PCF8574A via HW RIIC0 (PLL required)
-│   └── i2c_slave/main.c       I2C slave 0x50, 16-bit register map (PLL required)
+│   ├── blink_led/main.c       LED blink (983HH, no PLL)
+│   ├── mirror_dip/main.c      DIP switch → LED (983HH, no PLL)
+│   ├── i2c_bitbang/main.c     PCF8574A via bit-bang I2C (983HH, no PLL)
+│   ├── i2c_master_pcf8574/main.c  PCF8574A via HW RIIC0 (983HH, PLL)
+│   ├── i2c_slave/main.c       I2C slave 0x50, register map (983HH, PLL)
+│   └── display_manager/main.c Remote display controller (REMOTE_DISP, PLL)
 └── docs/
-    ├── i2c_register_map.md    I2C slave protocol spec (EEPROM-style, 64K address space)
+    ├── i2c_register_map.md    I2C slave protocol spec (EEPROM-style, 64K addr)
     ├── clock_system.md        PLL setup reference
     ├── riic_bringup.md        RIIC0 critical learnings (PBDC, PODC, IER)
     ├── pin_functions.md       Pin mux reference
@@ -94,9 +108,8 @@ rh850-baremetal-demo/
 
 ## Branches
 
-- **`main`**: Stable, tested baseline. All 5 apps verified on 983HH hardware.
-- **`misrac-2025`**: MISRA C:2025 compliance work. All 5 phases complete.
-  Pending: hardware regression test, then merge to main.
+- **`main`**: All work happens here. Tested on both 983HH and REMOTE_DISP boards.
+- **`misrac-2025`**: Historical — MISRA compliance work, merged to main.
 
 ## I2C Slave Protocol (16-bit sub-addressing)
 
@@ -109,23 +122,49 @@ Read:  [0x50+W] [addr_hi] [addr_lo] [0x50+R] [data0] ...
 
 Register map (see `docs/i2c_register_map.md` for full spec):
 
-| Range | Page | Current registers |
-|-------|------|-------------------|
+| Range | Page | Implemented registers |
+|-------|------|-----------------------|
 | `0x0000-0x00FF` | Device Info (RO) | FW version BCD at 0x0000-0x0001 |
-| `0x0100-0x01FF` | Status (RO) | DIP switches at 0x0100 |
-| `0x0200-0x02FF` | Control (RW) | LED at 0x0200 |
+| `0x0100-0x01FF` | Status (RO) | DIP switches at 0x0100 (983HH only) |
+| `0x0200-0x02FF` | Control (RW) | LED at 0x0200 (983HH only) |
+| `0x1000-0x1FFF` | Diagnostics (RO) | Backlight NTC: raw ADC 0x1000-1001, temp 0x1002-1003 |
 | `0x0300-0x03FF` | Configuration | (future) |
-| `0x1000-0x1FFF` | Diagnostics | (future: temp, voltage, error counters) |
 | `0xF000-0xFEFF` | Firmware Update | (future: image staging) |
 | `0xFF00-0xFFFF` | Bootloader | (future: update trigger, CRC) |
 
-Pi4 test commands:
+### Temperature register format
+
+Signed 16-bit, 0.1 degC resolution, big-endian:
+- `0x00FD` = 253 = 25.3 C
+- `0xFF9C` = -100 = -10.0 C
+
+### Pi4 test commands
+
 ```bash
-i2ctransfer -y 1 w2@0x50 0x00 0x00 r2@0x50     # FW version
-i2ctransfer -y 1 w3@0x50 0x02 0x00 0x01         # LED ON
-i2ctransfer -y 1 w3@0x50 0x02 0x00 0x00         # LED OFF
-i2ctransfer -y 1 w2@0x50 0x01 0x00 r1@0x50      # DIP switches
+# Firmware version
+i2ctransfer -y 1 w2@0x50 0x00 0x00 r2@0x50
+
+# 983HH: LED ON / OFF
+i2ctransfer -y 1 w3@0x50 0x02 0x00 0x01
+i2ctransfer -y 1 w3@0x50 0x02 0x00 0x00
+
+# 983HH: DIP switches
+i2ctransfer -y 1 w2@0x50 0x01 0x00 r1@0x50
+
+# REMOTE_DISP: Backlight temperature (raw + degC in one read)
+i2ctransfer -y 1 w2@0x50 0x10 0x00 r4@0x50
+# Example: 0x0C 0x01 0x00 0xFC → raw=3073, temp=25.2C
 ```
+
+## ADC / NTC Temperature Monitoring (REMOTE_DISP)
+
+- **ADC:** ADCA0 channel 0 (ANI00 = AP0_0), 12-bit, polling mode
+- **Circuit:** +3.3V --- 3.3K pullup --- 100R --- AP0_0 --- NTC --- GND
+- **NTC:** NTCS0603E3103FHT (10K@25C, Beta=3960)
+- **Sampling:** Every 100ms from OSTM0 timer callback
+- **Conversion:** Integer-only Beta equation with piecewise ln() approximation
+- **Register values from Smart Configurator** (see `tmp-sample-code/renesas-smart-config/`)
+- **Debug log** (DEBUG=on): prints `ADC=xxxx T=xxxx` every 1 second
 
 ## Non-Blocking Debug Architecture
 
@@ -137,6 +176,20 @@ I2C ISR → DBG_PUTS() → ring buffer (~1 us) → OSTM0 ISR (1ms) → UART TX
 - OSTM0 timer fires every 1 ms, drains up to 8 bytes to UART per tick
 - Boot messages use blocking UART (before timer is running)
 - Entire debug system compiles to nothing when `DEBUG=off`
+- Boot banner uses `BOARD_NAME` from board.h for correct board identification
+
+## REMOTE_DISP Power-Up Sequence
+
+Translated from BIOS init script (`tmp-sample-code/remote-disp-init/`):
+
+1. GPIO port directions (exclude P0_13/P0_14 — UART pins)
+2. Main power: 5V, 3.3V, PMIC enable + 5ms
+3. FPGA power: 1.1V, 1.35V, 1.2V, 2.5V + 5ms
+4. FPGA program + reset release (5ms each)
+5. Deserializer power: 1.8V, 1.15V, DCDC reset + 5ms
+6. SPI chip select init
+7. Backlight enable
+8. LCD reset sequence (10ms + 6ms + 5ms + 95ms)
 
 ## MISRA C:2025 Compliance
 
@@ -146,7 +199,7 @@ Key references:
 - `docs/misra-c2025-compliance-plan.md` — 5-phase plan (all phases done)
 - `docs/misra-baseline-report.md` — Before/after violation counts
 - `docs/misra_deviations.md` — 10 formal deviation records
-- `make misra-count` — Quick check: should show 77 (all deviations)
+- `make misra-count` — Quick check (expect 77, all deviations)
 
 MISRA-safe patterns used throughout:
 - Explicit boolean comparisons: `if ((val & MASK) != 0u)` not `if (val & MASK)`
@@ -154,8 +207,11 @@ MISRA-safe patterns used throughout:
 - No parameter modification: use local copy
 - Void cast unused returns: `(void)func()`
 - No side effects in `&&`/`||`: restructured to `while (t != 0u) { if (cond) break; t--; }`
+- Function pointer null check: `!= (void *)0` (not `NULL`)
 
-## Hardware Reference (983HH Board)
+## Hardware Reference
+
+### 983HH Board
 
 | Item | Value |
 |------|-------|
@@ -164,10 +220,23 @@ MISRA-safe patterns used throughout:
 | RAM | 0xFEBF0000, 32 KB (stack 4 KB at top) |
 | Flash | 0x00000000, 512 KB |
 | UART | RLIN32: P0_13 (RX), P0_14 (TX), AF1, 115200 baud |
-| I2C | RIIC0: P10_2 (SDA), P10_3 (SCL), AF2, ~94 kHz |
+| I2C | RIIC0: P10_2 (SDA), P10_3 (SCL), AF2, ~100 kHz |
 | LED | P9_6 (active high) |
 | DIP | AP0_7 through AP0_14 (8 switches) |
 | Timer | OSTM0: interrupt ch84, INTC2 at 0xFFFFB0A8 |
+
+### REMOTE_DISP Board
+
+| Item | Value |
+|------|-------|
+| MCU | R7F7016863 (same as 983HH) |
+| Display | 15.6" LCD (POC_9090), FPD-Link deserializer (DS90UB9xx) |
+| FPGA | On-board, programmed via P8_6, reset via P8_5 |
+| I2C0 | RIIC0 slave: P10_2 (SDA), P10_3 (SCL), 400 kHz fast mode |
+| NTC | NTCS0603E3103FHT on AP0_0, 3.3K pullup, Beta=3960 |
+| Backlight | VLED_ON on P10_11 |
+| Power | 7 supply rails with sequenced enable (see board_init.c) |
+| UART | Same as 983HH: P0_13/P0_14, 115200 baud |
 
 ## Critical Learnings (Don't Repeat These Mistakes)
 
@@ -192,16 +261,32 @@ MISRA-safe patterns used throughout:
    populate the vector table in standalone Makefile builds. ISR addresses must be
    manually placed in `boot.asm`.
 
+8. **Board port init must not clobber UART pins**: REMOTE_DISP port_init()
+   originally configured P0_14 (UART TX) as GPIO, killing debug output.
+   Exclude UART pins (P0_13, P0_14) from port direction masks.
+
+9. **BIOS script drives pin HIGH before configuring as output**: The pattern
+   `P xx 20 mask` then `P xx 82 mask 0` sets level first, then direction.
+   This avoids glitching power rails LOW during output configuration.
+
+10. **ADC first reading may be zero**: ADCA0 needs a settling period after init.
+    The first `hal_adc_read()` at boot returns 0. Timer-based readings (100ms+
+    after init) are stable and accurate.
+
 ## Future Extensions (Planned)
 
 - **Main message loop** with timer-driven background workers (`lib_msgloop.c/.h`)
 - **DLT/DLS diagnostics**: Binary runtime trace on UART (after text boot banner)
-- **Temperature/voltage monitoring**: ADC readings in diagnostics register page
+- **SPI HAL** (`hal_spi.c/.h`): CSIH1 for REMOTE_DISP FPGA communication
+- **I2C1 master**: P8_0/P8_1 for deserializer and touch panel (REMOTE_DISP)
+- **Additional ADC channels**: Supply voltage monitoring
 - **I2C firmware update**: Image staging at 0xF000, bootloader control at 0xFF00
 - **A/B failsafe firmware upgrade**: Bootloader with CRC validation
-- **Additional boards**: New `board/<name>/` directories
 
 ## Adding New Code
+
+**New board:** Create `board/<NAME>/board.h` (must define `BOARD_NAME`),
+`board_init.c`, `board_vectors.h`. Build with `make BOARD=<NAME> APP=<app>`.
 
 **New HAL module:** Create `hal/hal_<name>.c/.h`, add ISR to `boot.asm` EIINTTBL
 if needed, add INTC2 address to `board_vectors.h`.
@@ -210,6 +295,6 @@ if needed, add INTC2 address to `board_vectors.h`.
 `on_read`/`on_write` callbacks, update `docs/i2c_register_map.md`.
 
 **New app:** Create `app/<name>/main.c`, include `lib_boot.h`, add `BOOT_BANNER()`.
-Build with `make BOARD=983HH APP=<name>`.
+Build with `make BOARD=<BOARD> APP=<name>`.
 
-**After any code change:** Run `make misra-count` and verify count stays at 77.
+**After any code change:** Run `make misra-count` and verify count is reasonable.
