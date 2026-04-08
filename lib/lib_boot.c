@@ -16,7 +16,7 @@ void boot_print_banner(const char *app_name)
 
     hal_uart_puts("\n=== ");
     hal_uart_puts(app_name);
-    hal_uart_puts(" ===\nBoard: 983HH | FW: v");
+    hal_uart_puts(" ===\nBoard: " BOARD_NAME " | FW: v");
     hal_uart_put_hex8((uint8)FW_VERSION_MAJOR);
     hal_uart_putc('.');
     hal_uart_put_hex8((uint8)FW_VERSION_MINOR);

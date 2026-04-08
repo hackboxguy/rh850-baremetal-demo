@@ -8,6 +8,8 @@
 #ifndef BOARD_983HH_H
 #define BOARD_983HH_H
 
+#define BOARD_NAME              "983HH"
+
 /* ---- Oscillator ---- */
 #define BOARD_MAIN_OSC_HZ       16000000u   /* 16 MHz crystal on X1/X2 */
 #define BOARD_HAS_PLL0          0           /* F1KM-S1: no PLL0 */

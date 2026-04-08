@@ -9,6 +9,8 @@
 #ifndef BOARD_REMOTE_DISP_H
 #define BOARD_REMOTE_DISP_H
 
+#define BOARD_NAME              "REMOTE_DISP"
+
 /* ---- Oscillator ---- */
 #define BOARD_MAIN_OSC_HZ       16000000u
 #define BOARD_HAS_PLL0          0
