@@ -45,7 +45,10 @@
 #define REG_FW_MINOR        0x0001u
 
 /* Page 0x01: Status */
-#define REG_DISP_STATE      0x0100u     /* Display power state (0=OFF, 1=ON) */
+#define REG_DISP_STATE      0x0100u     /* Display power state (0=OFF, 1=ON) RO */
+
+/* Page 0x02: Control */
+#define REG_DISP_POWER_CMD  0x0200u     /* Display power command (0=OFF, 1=ON) RW */
 
 /* Page 0x10: Diagnostics */
 #define REG_TEMP_BL_RAW_HI  0x1000u
@@ -56,11 +59,15 @@
 /* ---- Display power state machine ---- */
 
 /*
- *                     PCL=LOW (debounced)
- *   DISP_OFF ─────────────────────────────► DISP_ON
- *      ▲                                       │
- *      │              PCL=HIGH (debounced)      │
- *      └───────────────────────────────────────┘
+ * Two sources control display power:
+ *   PCL (AP0_4): hardware signal from vehicle (HIGH=OFF, LOW=ON)
+ *   I2C cmd:     software command from head-unit (0x00=OFF, 0x01=ON)
+ *
+ * Priority: PCL=HIGH always forces OFF (vehicle safety).
+ *           When PCL=LOW, I2C command controls ON/OFF.
+ *
+ *   Display ON  = (PCL=LOW) AND (i2c_cmd=ON)
+ *   Display OFF = (PCL=HIGH) OR (i2c_cmd=OFF)
  */
 #define DISP_OFF    0u
 #define DISP_ON     1u
@@ -68,6 +75,7 @@
 static volatile uint8  g_disp_state;
 static volatile uint8  g_pcl_debounce;     /* Debounce counter (ms) */
 static volatile uint8  g_pcl_last;         /* Last stable PCL state */
+static volatile uint8  g_i2c_power_cmd;    /* I2C power command: 0=OFF, 1=ON */
 
 /* ---- ADC / NTC conversion ---- */
 
@@ -230,8 +238,17 @@ static void timer_callback(void)
 
 static void on_write(uint16 reg, uint8 val)
 {
-    (void)reg;
-    (void)val;
+    switch (reg)
+    {
+    case REG_DISP_POWER_CMD:
+        g_i2c_power_cmd = (val != 0u) ? 1u : 0u;
+        DBG_PUTS("I2C PWR=");
+        DBG_HEX8(g_i2c_power_cmd);
+        DBG_PUTS("\n");
+        break;
+    default:
+        break;
+    }
 }
 
 static uint8 on_read(uint16 reg)
@@ -241,6 +258,7 @@ static uint8 on_read(uint16 reg)
     case REG_FW_MAJOR:        return FW_VERSION_MAJOR;
     case REG_FW_MINOR:        return FW_VERSION_MINOR;
     case REG_DISP_STATE:      return g_disp_state;
+    case REG_DISP_POWER_CMD:  return g_i2c_power_cmd;
     case REG_TEMP_BL_RAW_HI:  return (uint8)(g_adc_raw >> 8);
     case REG_TEMP_BL_RAW_LO:  return (uint8)(g_adc_raw);
     case REG_TEMP_BL_DEG_HI:  return (uint8)((uint16)g_temp_degc10 >> 8);
@@ -292,7 +310,8 @@ int main(void)
     g_log_tick = 0u;
     g_disp_state = DISP_OFF;
     g_pcl_debounce = 0u;
-    g_pcl_last = 1u;    /* Assume HIGH (display off) until proven otherwise */
+    g_pcl_last = 1u;        /* Assume HIGH (display off) until proven otherwise */
+    g_i2c_power_cmd = 1u;   /* Default ON — display turns on when PCL=LOW */
 
     /*
      * Assert 3.3V self-hold FIRST — before anything else.
@@ -353,20 +372,28 @@ int main(void)
 #endif
     }
 
-    /* Main loop: monitor PCL for power state transitions */
+    /*
+     * Main loop: monitor PCL + I2C for power state transitions.
+     *
+     * Priority logic:
+     *   want_on = (PCL=LOW) AND (i2c_cmd=ON)
+     *   PCL=HIGH always forces OFF (vehicle safety override).
+     *   When PCL=LOW, I2C command controls ON/OFF.
+     */
     for (;;)
     {
-        /* Only act when debounce is complete */
         if (g_pcl_debounce >= PCL_DEBOUNCE_MS)
         {
-            if ((g_disp_state == DISP_OFF) && (g_pcl_last == 0u))
+            uint8 want_on;
+            want_on = ((g_pcl_last == 0u) && (g_i2c_power_cmd != 0u))
+                      ? 1u : 0u;
+
+            if ((g_disp_state == DISP_OFF) && (want_on != 0u))
             {
-                /* PCL went LOW — power on display */
                 display_power_on();
             }
-            else if ((g_disp_state == DISP_ON) && (g_pcl_last == 1u))
+            else if ((g_disp_state == DISP_ON) && (want_on == 0u))
             {
-                /* PCL went HIGH — power off display */
                 display_power_off();
             }
             else
