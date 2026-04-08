@@ -411,4 +411,9 @@ void board_power_down(void)
     /* 2. Main power supplies disable (5V, 3.3V_SW, PMIC).
      * MCU survives on UG3V3_EN self-hold. */
     power_main_disable();
+
+    /* Wait for capacitors to discharge before any re-power.
+     * Without this, a quick OFF→ON cycle may leave FPGA/deser in
+     * an undefined state (partially powered, config lost). */
+    delay_ms(200);
 }
