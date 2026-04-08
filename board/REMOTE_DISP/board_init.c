@@ -93,7 +93,11 @@ static void port_init(void)
     PORTAPIBC0 |= 0x41FFu;
 
     /* --- Port P0 --- */
-    /* BIOS: P 00 10 1161 / P 00 81 269E 5961 / P 00 82 5961 0000 / P 00 E0 269E */
+    /* BIOS: P 00 10 1161 / P 00 81 269E 5961 / P 00 82 5961 0000 / P 00 E0 269E
+     * Exclude bits 13,14 (P0_13=UART RX, P0_14=UART TX) — already configured by HAL.
+     * 0x1161 & ~0x6000 = 0x1161 (no overlap)
+     * 0x5961 & ~0x6000 = 0x1961 (removes bit 14 from output config)
+     */
     for (i = 0u; i < 16u; i++)
     {
         if ((0x1161u & ((uint16)1u << i)) != 0u)
@@ -103,7 +107,7 @@ static void port_init(void)
     }
     for (i = 0u; i < 16u; i++)
     {
-        if ((0x5961u & ((uint16)1u << i)) != 0u)
+        if ((0x1961u & ((uint16)1u << i)) != 0u)
         {
             PORTPMCSR0 = PSR_CLR(i);
             PORTPMSR0  = PSR_CLR(i);
