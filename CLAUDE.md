@@ -73,17 +73,19 @@ rh850-baremetal-demo/
 │   │   ├── board_init.c       LED + DIP switch GPIO init
 │   │   └── board_vectors.h    INTC2 addresses: RIIC0 ch76-79, OSTM0 ch84
 │   └── REMOTE_DISP/           Automotive remote display
-│       ├── board.h            Power pins, NTC params, I2C speed (400kHz)
-│       ├── board_init.c       Full power-up sequence (7 stages with delays)
+│       ├── board.h            Power pins, PCL, NTC params, I2C speed (400kHz)
+│       ├── board_init.c       Power-up/down sequences, UG3V3_EN self-hold
 │       └── board_vectors.h    Same interrupt channels as 983HH
 ├── hal/
 │   ├── hal_clock.c/.h         PLL1 init, prot_write0/1 helpers
-│   ├── hal_gpio.c/.h          GPIO ports 0,8,9,10,11 with PSR atomic macros
+│   ├── hal_gpio.c/.h          GPIO ports 0,8,9,10,11, AP0 read
 │   ├── hal_uart.c/.h          RLIN32 UART: blocking + non-blocking (ring buffer)
 │   ├── hal_adc.c/.h           ADCA0: polling single-channel 12-bit ADC
 │   ├── hal_riic_slave.c/.h    RIIC0 slave: interrupt-driven, 16-bit sub-addressing
-│   ├── hal_riic_master.c/.h   RIIC0 master: polling
-│   ├── hal_i2c_bitbang.c/.h   Bit-bang I2C with bus recovery (9-clock SCL)
+│   ├── hal_riic_master.c/.h   RIIC0 master: polling (bus 0, P10_2/P10_3)
+│   ├── hal_riic1_master.c/.h  RIIC1 master: polling (reserved, HW not on P8)
+│   ├── hal_i2c_bitbang.c/.h   Bit-bang I2C bus 0 (P10_2/P10_3, 983HH)
+│   ├── hal_i2c1_bitbang.c/.h  Bit-bang I2C bus 1 (P8_0/P8_1, REMOTE_DISP)
 │   └── hal_timer.c/.h         OSTM0 interval timer (1ms)
 ├── lib/
 │   ├── lib_boot.c/.h          Standard boot banner (conditional on DEBUG=on)
@@ -126,10 +128,10 @@ Register map (see `docs/i2c_register_map.md` for full spec):
 | Range | Page | Implemented registers |
 |-------|------|-----------------------|
 | `0x0000-0x00FF` | Device Info (RO) | FW version BCD at 0x0000-0x0001 |
-| `0x0100-0x01FF` | Status (RO) | DIP switches at 0x0100 (983HH only) |
-| `0x0200-0x02FF` | Control (RW) | LED at 0x0200 (983HH only) |
+| `0x0100-0x01FF` | Status (RO) | Display state at 0x0100, DIP switches (983HH) |
+| `0x0200-0x02FF` | Control (RW) | Display power at 0x0200, LED (983HH) |
+| `0x0300-0x03FF` | Debug (RW) | Scan cmd 0x0300, status 0x0301, I2C log 0x0302 |
 | `0x1000-0x1FFF` | Diagnostics (RO) | Backlight NTC: raw ADC 0x1000-1001, temp 0x1002-1003 |
-| `0x0300-0x03FF` | Configuration | (future) |
 | `0xF000-0xFEFF` | Firmware Update | (future: image staging) |
 | `0xFF00-0xFFFF` | Bootloader | (future: update trigger, CRC) |
 
@@ -152,9 +154,22 @@ i2ctransfer -y 1 w3@0x50 0x02 0x00 0x00
 # 983HH: DIP switches
 i2ctransfer -y 1 w2@0x50 0x01 0x00 r1@0x50
 
+# REMOTE_DISP: Display power OFF / ON
+i2ctransfer -y 1 w3@0x50 0x02 0x00 0x00
+i2ctransfer -y 1 w3@0x50 0x02 0x00 0x01
+
+# REMOTE_DISP: Read display state (0=OFF, 1=ON)
+i2ctransfer -y 1 w2@0x50 0x01 0x00 r1@0x50
+
 # REMOTE_DISP: Backlight temperature (raw + degC in one read)
 i2ctransfer -y 1 w2@0x50 0x10 0x00 r4@0x50
-# Example: 0x0C 0x01 0x00 0xFC → raw=3073, temp=25.2C
+
+# REMOTE_DISP: I2C1 bus scan (prints i2cdetect table on UART)
+i2ctransfer -y 1 w3@0x50 0x03 0x00 0x01
+
+# REMOTE_DISP: Disable/enable I2C slave transaction debug on UART
+i2ctransfer -y 1 w3@0x50 0x03 0x02 0x00    # disable
+i2ctransfer -y 1 w3@0x50 0x03 0x02 0x01    # enable
 ```
 
 ## ADC / NTC Temperature Monitoring (REMOTE_DISP)
@@ -165,7 +180,14 @@ i2ctransfer -y 1 w2@0x50 0x10 0x00 r4@0x50
 - **Sampling:** Every 100ms from OSTM0 timer callback
 - **Conversion:** Integer-only Beta equation with piecewise ln() approximation
 - **Register values from Smart Configurator** (see `tmp-sample-code/renesas-smart-config/`)
-- **Debug log** (DEBUG=on): prints `ADC=xxxx T=xxxx` every 1 second
+
+## I2C1 Bus Scan (REMOTE_DISP)
+
+- **Bus:** P8_0 (SDA1), P8_1 (SCL1), **bit-banged** (RIIC1 HW not routed to these pins on 100-pin variant)
+- **Trigger:** Write 0x01 to register 0x0300 (from Pi4 or any I2C master)
+- **Output:** i2cdetect-style table on UART debug terminal
+- **ISR debug auto-suppressed** during scan for clean output, restored after
+- **Devices found on REMOTE_DISP:** 0x30 (DS90UB9xx deserializer), 0x6B (TBD)
 
 ## PCL Display Power Control (REMOTE_DISP)
 
@@ -365,10 +387,19 @@ MISRA-safe patterns used throughout:
     cold boot path. Missing from `board_power_on()` caused first ON after OFF
     to fail.
 
+17. **RIIC1 hardware not routed to P8_0/P8_1 on 100-pin variant**: RIIC1 HW
+    master produced no ACKs on these pins. The BIOS uses software (bit-bang)
+    I2C on P8_0/P8_1 — use `hal_i2c1_bitbang` instead of `hal_riic1_master`.
+
+18. **ISR debug interleaves with blocking UART**: Ring buffer drain in timer ISR
+    outputs bytes between blocking `hal_uart_puts()` calls. Fix: suppress ISR
+    debug (`g_riic_slave_dbg_en=0`), drain buffer, then print.
+
 ## Future Extensions (Planned)
 
-- **Deserializer I2C re-init**: I2C1 master (P8_0/P8_1) for DS90UB9xx
-  configuration after power cycle — currently deser must stay powered
+- **Deserializer I2C re-init**: Use hal_i2c1_bitbang to configure DS90UB9xx
+  (at 0x30) after power cycle — currently deser must stay powered
+- **Identify device at 0x6B** on I2C1 bus (found via scan)
 - **Main message loop** with timer-driven background workers (`lib_msgloop.c/.h`)
 - **DLT/DLS diagnostics**: Binary runtime trace on UART (after text boot banner)
 - **SPI HAL** (`hal_spi.c/.h`): CSIH1 for REMOTE_DISP FPGA communication

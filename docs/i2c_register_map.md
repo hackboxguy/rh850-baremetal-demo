@@ -113,6 +113,43 @@ Display OFF = (PCL=HIGH) OR (I2C cmd=OFF)
 
 Default I2C power state = ON at boot. Read current state at `0x0100`.
 
+## Page 0x03: Debug Commands (REMOTE_DISP)
+
+| Address | Name | Access | Description |
+|---------|------|--------|-------------|
+| `0x0300` | `DBG_CMD` | RW | Debug command: 0x00=clear, 0x01=I2C1 bus scan |
+| `0x0301` | `DBG_STATUS` | RO | Command status: 0=idle, 1=running, 2=done |
+| `0x0302` | `DBG_I2C_LOG` | RW | I2C slave debug prints: 0x00=off, 0x01=on (default) |
+| `0x0303-0x03FF` | (reserved) | | Future: FPGA status dump, deser register read, etc. |
+
+### I2C1 Bus Scan
+
+Scans all 7-bit addresses (0x03-0x77) on the second I2C bus (P8_0/P8_1,
+bit-banged) and prints an i2cdetect-style table to the UART debug terminal.
+
+ISR debug prints are automatically suppressed during the scan for clean output.
+
+```bash
+# Trigger scan (one command, auto-suppresses ISR debug)
+i2ctransfer -y 1 w3@0x50 0x03 0x00 0x01
+
+# Check status (optional)
+i2ctransfer -y 1 w2@0x50 0x03 0x01 r1@0x50
+```
+
+### I2C Slave Debug Control
+
+Controls the R[]/W[] transaction debug prints on the UART terminal.
+Useful for suppressing noise when reading the terminal for other output.
+
+```bash
+# Disable I2C slave transaction prints
+i2ctransfer -y 1 w3@0x50 0x03 0x02 0x00
+
+# Re-enable
+i2ctransfer -y 1 w3@0x50 0x03 0x02 0x01
+```
+
 ## Page 0x10: Diagnostics
 
 | Address | Name | Access | Format | Description |
