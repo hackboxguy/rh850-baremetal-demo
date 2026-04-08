@@ -35,7 +35,7 @@
 #define BOARD_I2C_SCL_PORT      10
 #define BOARD_I2C_SCL_BIT       3
 #define BOARD_I2C_AF            2
-#define BOARD_I2C_SLAVE_ADDR    0x50u
+#define BOARD_I2C_SLAVE_ADDR    0x66u
 /* 400 kHz fast mode: CKS=/2 (20 MHz ref), BRL for SCL sync */
 #define BOARD_I2C_MR1           0x10u       /* CKS=/2 */
 #define BOARD_I2C_BRL           0xF2u       /* 0xE0 | 0x12 (18 cycles low) */
