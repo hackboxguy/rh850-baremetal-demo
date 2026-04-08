@@ -9,7 +9,7 @@ applications that expose an I2C slave interface on the RH850 MCU.
 
 | Parameter | Value |
 |-----------|-------|
-| Slave address | 0x50 (7-bit) |
+| Slave address | Board-specific: 0x50 (983HH), 0x66 (REMOTE_DISP) |
 | Sub-addressing | 16-bit (EEPROM-style, 24C256/24C512 compatible) |
 | SCL speed | ~100 kHz (standard mode) |
 | Byte order | Big-endian (address high byte first) |
@@ -19,7 +19,7 @@ applications that expose an I2C slave interface on the RH850 MCU.
 ### Write (master -> slave)
 
 ```
-[START] [0x50+W] [addr_hi] [addr_lo] [data0] [data1] ... [STOP]
+[START] [ADDR+W] [addr_hi] [addr_lo] [data0] [data1] ... [STOP]
 ```
 
 The first two data bytes after the slave address set the 16-bit register
@@ -30,7 +30,7 @@ from 0xFFFF to 0x0000.
 ### Read (with address set)
 
 ```
-[START] [0x50+W] [addr_hi] [addr_lo] [RESTART] [0x50+R] [data0] [data1] ... [NACK] [STOP]
+[START] [ADDR+W] [addr_hi] [addr_lo] [RESTART] [ADDR+R] [data0] [data1] ... [NACK] [STOP]
 ```
 
 A write phase sets the register address, then a repeated-start switches
@@ -40,7 +40,7 @@ auto-increment.
 ### Current-address read (no address set)
 
 ```
-[START] [0x50+R] [data0] [data1] ... [NACK] [STOP]
+[START] [ADDR+R] [data0] [data1] ... [NACK] [STOP]
 ```
 
 Reads from the current address pointer (last set address, or where the

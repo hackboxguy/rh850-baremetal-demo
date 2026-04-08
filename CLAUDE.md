@@ -117,10 +117,11 @@ rh850-baremetal-demo/
 ## I2C Slave Protocol (16-bit sub-addressing)
 
 EEPROM-style (24C256 compatible). Auto-increment, wraps at 0xFFFF.
+Slave address is board-specific: **0x50** (983HH), **0x66** (REMOTE_DISP).
 
 ```
-Write: [0x50+W] [addr_hi] [addr_lo] [data0] [data1] ...
-Read:  [0x50+W] [addr_hi] [addr_lo] [0x50+R] [data0] ...
+Write: [ADDR+W] [addr_hi] [addr_lo] [data0] [data1] ...
+Read:  [ADDR+W] [addr_hi] [addr_lo] [ADDR+R] [data0] ...
 ```
 
 Register map (see `docs/i2c_register_map.md` for full spec):
@@ -144,32 +145,21 @@ Signed 16-bit, 0.1 degC resolution, big-endian:
 ### Pi4 test commands
 
 ```bash
-# Firmware version
-i2ctransfer -y 1 w2@0x50 0x00 0x00 r2@0x50
+# --- 983HH (address 0x50) ---
+i2ctransfer -y 1 w2@0x50 0x00 0x00 r2@0x50     # FW version
+i2ctransfer -y 1 w3@0x50 0x02 0x00 0x01        # LED ON
+i2ctransfer -y 1 w3@0x50 0x02 0x00 0x00        # LED OFF
+i2ctransfer -y 1 w2@0x50 0x01 0x00 r1@0x50     # DIP switches
 
-# 983HH: LED ON / OFF
-i2ctransfer -y 1 w3@0x50 0x02 0x00 0x01
-i2ctransfer -y 1 w3@0x50 0x02 0x00 0x00
-
-# 983HH: DIP switches
-i2ctransfer -y 1 w2@0x50 0x01 0x00 r1@0x50
-
-# REMOTE_DISP: Display power OFF / ON
-i2ctransfer -y 1 w3@0x50 0x02 0x00 0x00
-i2ctransfer -y 1 w3@0x50 0x02 0x00 0x01
-
-# REMOTE_DISP: Read display state (0=OFF, 1=ON)
-i2ctransfer -y 1 w2@0x50 0x01 0x00 r1@0x50
-
-# REMOTE_DISP: Backlight temperature (raw + degC in one read)
-i2ctransfer -y 1 w2@0x50 0x10 0x00 r4@0x50
-
-# REMOTE_DISP: I2C1 bus scan (prints i2cdetect table on UART)
-i2ctransfer -y 1 w3@0x50 0x03 0x00 0x01
-
-# REMOTE_DISP: Disable/enable I2C slave transaction debug on UART
-i2ctransfer -y 1 w3@0x50 0x03 0x02 0x00    # disable
-i2ctransfer -y 1 w3@0x50 0x03 0x02 0x01    # enable
+# --- REMOTE_DISP (address 0x66) ---
+i2ctransfer -y 1 w2@0x66 0x00 0x00 r2@0x66     # FW version
+i2ctransfer -y 1 w3@0x66 0x02 0x00 0x01        # Display ON
+i2ctransfer -y 1 w3@0x66 0x02 0x00 0x00        # Display OFF
+i2ctransfer -y 1 w2@0x66 0x01 0x00 r1@0x66     # Display state
+i2ctransfer -y 1 w2@0x66 0x10 0x00 r4@0x66     # Temperature
+i2ctransfer -y 1 w3@0x66 0x03 0x00 0x01        # I2C1 bus scan
+i2ctransfer -y 1 w3@0x66 0x03 0x02 0x00        # Mute debug
+i2ctransfer -y 1 w3@0x66 0x03 0x02 0x01        # Unmute debug
 ```
 
 ## ADC / NTC Temperature Monitoring (REMOTE_DISP)
@@ -219,9 +209,9 @@ DISP_OFF ──(want_on)──► DISP_ON
 
 **I2C display control (register 0x0200):**
 ```bash
-i2ctransfer -y 1 w3@0x50 0x02 0x00 0x00    # display OFF
-i2ctransfer -y 1 w3@0x50 0x02 0x00 0x01    # display ON
-i2ctransfer -y 1 w2@0x50 0x01 0x00 r1@0x50 # read state (0=OFF, 1=ON)
+i2ctransfer -y 1 w3@0x66 0x02 0x00 0x00    # display OFF
+i2ctransfer -y 1 w3@0x66 0x02 0x00 0x01    # display ON
+i2ctransfer -y 1 w2@0x66 0x01 0x00 r1@0x66 # read state (0=OFF, 1=ON)
 ```
 
 **Power cycle (verified on hardware):**
