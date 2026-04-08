@@ -114,7 +114,8 @@
 #define PCL_DEBOUNCE_MS         50u     /* Debounce: 50 consecutive same readings */
 
 /* ---- Board init / power control ---- */
-void board_init(void);
-void board_power_down(void);
+void board_init(void);         /* Cold boot: port_init + power-on sequence */
+void board_power_on(void);     /* Re-power: power-on sequence only (no port_init) */
+void board_power_down(void);   /* Power-down: reverse sequence + 200ms discharge */
 
 #endif /* BOARD_REMOTE_DISP_H */

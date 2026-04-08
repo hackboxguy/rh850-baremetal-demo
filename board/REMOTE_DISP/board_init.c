@@ -353,16 +353,11 @@ static void power_main_disable(void)
 
 /* ---- Public API ---- */
 
-void board_init(void)
+/*
+ * Power-on sequence (steps 2-8). Used by both cold boot and re-power.
+ */
+static void power_on_sequence(void)
 {
-    /* 0. Assert 3.3V self-hold IMMEDIATELY — before any port config.
-     * PCL from vehicle may be a short pulse; without self-hold the
-     * MCU loses power as soon as the pulse ends. */
-    pin_drive_high(PIN_UG3V3_EN_PORT, PIN_UG3V3_EN_BIT);
-
-    /* 1. Configure GPIO port directions and initial levels */
-    port_init();
-
     /* 2. Main power supplies */
     power_main_enable();
 
@@ -383,6 +378,20 @@ void board_init(void)
 
     /* 8. LCD panel reset sequence */
     lcd_reset_sequence();
+}
+
+void board_init(void)
+{
+    /* 0. Assert 3.3V self-hold IMMEDIATELY — before any port config.
+     * PCL from vehicle may be a short pulse; without self-hold the
+     * MCU loses power as soon as the pulse ends. */
+    pin_drive_high(PIN_UG3V3_EN_PORT, PIN_UG3V3_EN_BIT);
+
+    /* 1. Configure GPIO port directions (cold boot only) */
+    port_init();
+
+    /* 2-8. Power-on sequence */
+    power_on_sequence();
 }
 
 void board_power_down(void)
@@ -416,4 +425,14 @@ void board_power_down(void)
      * Without this, a quick OFF→ON cycle may leave FPGA/deser in
      * an undefined state (partially powered, config lost). */
     delay_ms(200);
+}
+
+void board_power_on(void)
+{
+    /*
+     * Re-power after board_power_down().
+     * Skips port_init() — GPIO directions are still configured from
+     * cold boot. Only runs the power-on stages (2-8).
+     */
+    power_on_sequence();
 }

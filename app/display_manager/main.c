@@ -251,9 +251,19 @@ static uint8 on_read(uint16 reg)
 
 /* ---- Display power control ---- */
 
+static volatile uint8 g_cold_boot = 1u;    /* 1 on first boot, 0 after */
+
 static void display_power_on(void)
 {
-    board_init();
+    if (g_cold_boot != 0u)
+    {
+        board_init();       /* Cold boot: port_init + power-on */
+        g_cold_boot = 0u;
+    }
+    else
+    {
+        board_power_on();   /* Re-power: power-on only (no port_init) */
+    }
     hal_adc_init(BOARD_NTC_ADC_CHANNEL);
     g_adc_raw = hal_adc_read();
     g_temp_degc10 = adc_to_temp_degc10(g_adc_raw);
