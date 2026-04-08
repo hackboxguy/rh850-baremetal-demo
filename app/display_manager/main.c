@@ -26,7 +26,9 @@
 #include "hal_gpio.h"
 #include "hal_adc.h"
 #include "hal_riic_slave.h"
+#include "hal_riic1_master.h"
 #include "hal_timer.h"
+#include "hal_uart.h"
 #include "lib_boot.h"
 #include "lib_debug.h"
 
@@ -49,6 +51,17 @@
 
 /* Page 0x02: Control */
 #define REG_DISP_POWER_CMD  0x0200u     /* Display power command (0=OFF, 1=ON) RW */
+
+/* Page 0x03: Debug commands */
+#define REG_DBG_CMD         0x0300u     /* Write 0x01=I2C1 scan, 0x00=clear */
+#define REG_DBG_STATUS      0x0301u     /* 0=idle, 1=running, 2=done */
+
+#define DBG_CMD_NONE        0x00u
+#define DBG_CMD_I2C1_SCAN   0x01u
+
+#define DBG_STATUS_IDLE     0x00u
+#define DBG_STATUS_RUNNING  0x01u
+#define DBG_STATUS_DONE     0x02u
 
 /* Page 0x10: Diagnostics */
 #define REG_TEMP_BL_RAW_HI  0x1000u
@@ -76,6 +89,8 @@ static volatile uint8  g_disp_state;
 static volatile uint8  g_pcl_debounce;     /* Debounce counter (ms) */
 static volatile uint8  g_pcl_last;         /* Last stable PCL state */
 static volatile uint8  g_i2c_power_cmd;    /* I2C power command: 0=OFF, 1=ON */
+static volatile uint8  g_dbg_cmd;          /* Debug command register */
+static volatile uint8  g_dbg_status;       /* Debug status register */
 
 /* ---- ADC / NTC conversion ---- */
 
@@ -181,7 +196,6 @@ static int16 adc_to_temp_degc10(uint16 adc_raw)
 /* ---- Timer callback (1ms) ---- */
 
 static volatile uint8 g_adc_tick;
-static volatile uint8 g_log_tick;
 
 static void timer_callback(void)
 {
@@ -217,19 +231,6 @@ static void timer_callback(void)
             g_adc_tick = 0u;
             g_adc_raw = hal_adc_read();
             g_temp_degc10 = adc_to_temp_degc10(g_adc_raw);
-
-            g_log_tick++;
-            if (g_log_tick >= 10u)
-            {
-                g_log_tick = 0u;
-                DBG_PUTS("ADC=");
-                DBG_HEX8((uint8)(g_adc_raw >> 8));
-                DBG_HEX8((uint8)g_adc_raw);
-                DBG_PUTS(" T=");
-                DBG_HEX8((uint8)((uint16)g_temp_degc10 >> 8));
-                DBG_HEX8((uint8)((uint16)g_temp_degc10));
-                DBG_PUTS("\n");
-            }
         }
     }
 }
@@ -246,6 +247,9 @@ static void on_write(uint16 reg, uint8 val)
         DBG_HEX8(g_i2c_power_cmd);
         DBG_PUTS("\n");
         break;
+    case REG_DBG_CMD:
+        g_dbg_cmd = val;
+        break;
     default:
         break;
     }
@@ -259,6 +263,8 @@ static uint8 on_read(uint16 reg)
     case REG_FW_MINOR:        return FW_VERSION_MINOR;
     case REG_DISP_STATE:      return g_disp_state;
     case REG_DISP_POWER_CMD:  return g_i2c_power_cmd;
+    case REG_DBG_CMD:         return g_dbg_cmd;
+    case REG_DBG_STATUS:      return g_dbg_status;
     case REG_TEMP_BL_RAW_HI:  return (uint8)(g_adc_raw >> 8);
     case REG_TEMP_BL_RAW_LO:  return (uint8)(g_adc_raw);
     case REG_TEMP_BL_DEG_HI:  return (uint8)((uint16)g_temp_degc10 >> 8);
@@ -286,7 +292,6 @@ static void display_power_on(void)
     g_adc_raw = hal_adc_read();
     g_temp_degc10 = adc_to_temp_degc10(g_adc_raw);
     g_adc_tick = 0u;
-    g_log_tick = 0u;
     g_disp_state = DISP_ON;
     DBG_PUTS("DISP ON\n");
 }
@@ -300,6 +305,55 @@ static void display_power_off(void)
     DBG_PUTS("DISP OFF\n");
 }
 
+/* ---- I2C1 bus scan (i2cdetect style) ---- */
+
+static void i2c1_bus_scan(void)
+{
+    uint8 addr;
+    uint8 col;
+
+    /* Use blocking UART for the scan output (runs from main loop, not ISR) */
+#ifdef DEBUG_ENABLED
+    hal_uart_puts("I2C1 scan:\n");
+    hal_uart_puts("     0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f\n");
+
+    for (addr = 0u; addr < 0x78u; addr++)
+    {
+        col = addr & 0x0Fu;
+
+        /* Print row header */
+        if (col == 0u)
+        {
+            hal_uart_put_hex8(addr);
+            hal_uart_putc(':');
+        }
+
+        /* Skip reserved addresses 0x00-0x02 */
+        if (addr < 0x03u)
+        {
+            hal_uart_puts("   ");
+        }
+        else if (hal_riic1_master_probe(addr) != 0u)
+        {
+            /* Device found */
+            hal_uart_putc(' ');
+            hal_uart_put_hex8(addr);
+        }
+        else
+        {
+            hal_uart_puts(" --");
+        }
+
+        /* End of row */
+        if (col == 0x0Fu)
+        {
+            hal_uart_puts("\n");
+        }
+    }
+    hal_uart_puts("\n");
+#endif
+}
+
 /* ---- Main ---- */
 
 int main(void)
@@ -307,11 +361,12 @@ int main(void)
     g_adc_raw = 0u;
     g_temp_degc10 = 0;
     g_adc_tick = 0u;
-    g_log_tick = 0u;
     g_disp_state = DISP_OFF;
     g_pcl_debounce = 0u;
     g_pcl_last = 1u;        /* Assume HIGH (display off) until proven otherwise */
     g_i2c_power_cmd = 1u;   /* Default ON — display turns on when PCL=LOW */
+    g_dbg_cmd = DBG_CMD_NONE;
+    g_dbg_status = DBG_STATUS_IDLE;
 
     /*
      * Assert 3.3V self-hold FIRST — before anything else.
@@ -354,6 +409,12 @@ int main(void)
     hal_uart_puts(" (400kHz)\n");
 #endif
 
+    /* RIIC1 master init (I2C1 bus: deserializer, touch panel, scan) */
+    hal_riic1_master_init();
+#ifdef DEBUG_ENABLED
+    hal_uart_puts("RIIC1 master ready (100kHz)\n");
+#endif
+
     /* Enable global interrupts */
     __EI();
 
@@ -382,6 +443,7 @@ int main(void)
      */
     for (;;)
     {
+        /* ---- Display power state machine ---- */
         if (g_pcl_debounce >= PCL_DEBOUNCE_MS)
         {
             uint8 want_on;
@@ -399,6 +461,24 @@ int main(void)
             else
             {
                 /* No transition needed */
+            }
+        }
+
+        /* ---- Debug command handler ---- */
+        if (g_dbg_cmd != DBG_CMD_NONE)
+        {
+            uint8 cmd = g_dbg_cmd;
+            g_dbg_cmd = DBG_CMD_NONE;
+
+            switch (cmd)
+            {
+            case DBG_CMD_I2C1_SCAN:
+                g_dbg_status = DBG_STATUS_RUNNING;
+                i2c1_bus_scan();
+                g_dbg_status = DBG_STATUS_DONE;
+                break;
+            default:
+                break;
             }
         }
     }
