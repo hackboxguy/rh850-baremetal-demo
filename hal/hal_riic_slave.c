@@ -334,13 +334,18 @@ void hal_riic0_isr_ri(void)
     }
     else if (g_slave_state == ST_RECEIVING_DATA)
     {
+        /* Check debug flag BEFORE callback (callback may change the flag).
+         * C89: declaration must be at top of block. */
+        uint8 dbg;
+        dbg = g_riic_slave_dbg_en;
+
         /* Subsequent bytes = register data */
         if (g_on_write != (void *)0)
         {
             g_on_write(g_reg_addr, data);
         }
 
-        if (g_riic_slave_dbg_en != 0u)
+        if (dbg != 0u)
         {
             DBG_PUTS("W[");
             DBG_HEX8((uint8)(g_reg_addr >> 8));
