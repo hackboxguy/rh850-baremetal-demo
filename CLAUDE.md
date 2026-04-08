@@ -187,7 +187,8 @@ i2ctransfer -y 1 w3@0x50 0x03 0x02 0x01    # enable
 - **Trigger:** Write 0x01 to register 0x0300 (from Pi4 or any I2C master)
 - **Output:** i2cdetect-style table on UART debug terminal
 - **ISR debug auto-suppressed** during scan for clean output, restored after
-- **Devices found on REMOTE_DISP:** 0x30 (DS90UB9xx deserializer), 0x6B (TBD)
+- **I2C slave debug log** controllable via register 0x0302 (0=off, 1=on)
+- **Devices found on REMOTE_DISP:** 0x30 (DS90UB9xx deserializer), 0x60 (varies by display size), 0x6B (RTQ6749 PMIC)
 
 ## PCL Display Power Control (REMOTE_DISP)
 
@@ -399,7 +400,7 @@ MISRA-safe patterns used throughout:
 
 - **Deserializer I2C re-init**: Use hal_i2c1_bitbang to configure DS90UB9xx
   (at 0x30) after power cycle — currently deser must stay powered
-- **Identify device at 0x6B** on I2C1 bus (found via scan)
+- **RTQ6749 PMIC control** via I2C1 (address 0x6B) — voltage monitoring, power management
 - **Main message loop** with timer-driven background workers (`lib_msgloop.c/.h`)
 - **DLT/DLS diagnostics**: Binary runtime trace on UART (after text boot banner)
 - **SPI HAL** (`hal_spi.c/.h`): CSIH1 for REMOTE_DISP FPGA communication
