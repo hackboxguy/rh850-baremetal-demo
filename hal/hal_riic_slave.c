@@ -68,6 +68,8 @@ static volatile uint8  g_slave_state;
 static volatile uint16 g_reg_addr;      /* 16-bit register address */
 static volatile uint16 g_txn_addr;      /* Debug: start address of current transaction */
 
+volatile uint8 g_riic_slave_dbg_en = 1u; /* 1=debug prints on, 0=off */
+
 static hal_riic_slave_write_cb g_on_write;
 static hal_riic_slave_read_cb  g_on_read;
 
@@ -241,12 +243,15 @@ void hal_riic0_isr_ee(void)
             (g_slave_state == ST_SEND_DONE))
         {
             bytes_transferred = (g_reg_addr - g_txn_addr) - 1u;
-            DBG_PUTS("R[");
-            DBG_HEX8((uint8)(g_txn_addr >> 8));
-            DBG_HEX8((uint8)g_txn_addr);
-            DBG_PUTS("] ");
-            DBG_HEX8((uint8)bytes_transferred);
-            DBG_PUTS(" bytes\n");
+            if (g_riic_slave_dbg_en != 0u)
+            {
+                DBG_PUTS("R[");
+                DBG_HEX8((uint8)(g_txn_addr >> 8));
+                DBG_HEX8((uint8)g_txn_addr);
+                DBG_PUTS("] ");
+                DBG_HEX8((uint8)bytes_transferred);
+                DBG_PUTS(" bytes\n");
+            }
         }
         g_slave_state = ST_IDLE;
     }
@@ -335,12 +340,15 @@ void hal_riic0_isr_ri(void)
             g_on_write(g_reg_addr, data);
         }
 
-        DBG_PUTS("W[");
-        DBG_HEX8((uint8)(g_reg_addr >> 8));
-        DBG_HEX8((uint8)g_reg_addr);
-        DBG_PUTS("]=");
-        DBG_HEX8(data);
-        DBG_PUTS("\n");
+        if (g_riic_slave_dbg_en != 0u)
+        {
+            DBG_PUTS("W[");
+            DBG_HEX8((uint8)(g_reg_addr >> 8));
+            DBG_HEX8((uint8)g_reg_addr);
+            DBG_PUTS("]=");
+            DBG_HEX8(data);
+            DBG_PUTS("\n");
+        }
 
         g_reg_addr++;               /* Auto-increment with wrap */
 

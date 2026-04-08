@@ -30,6 +30,13 @@ void hal_riic_slave_init(uint8 slave_addr,
                          hal_riic_slave_write_cb on_write,
                          hal_riic_slave_read_cb  on_read);
 
+/*
+ * Debug log enable flag. Set to 0 to suppress ISR transaction debug
+ * prints (R[]/W[] messages). Default 1 (enabled). Can be toggled at
+ * runtime via I2C register to get clean UART output for other uses.
+ */
+extern volatile uint8 g_riic_slave_dbg_en;
+
 /* ISR handlers (called from EIINTTBL in boot.asm, do not call directly) */
 void hal_riic0_isr_ti(void);    /* ch76: Transmit data empty */
 void hal_riic0_isr_ee(void);    /* ch77: Error/event */

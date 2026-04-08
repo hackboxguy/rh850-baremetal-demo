@@ -55,6 +55,7 @@
 /* Page 0x03: Debug commands */
 #define REG_DBG_CMD         0x0300u     /* Write 0x01=I2C1 scan, 0x00=clear */
 #define REG_DBG_STATUS      0x0301u     /* 0=idle, 1=running, 2=done */
+#define REG_DBG_I2C_LOG     0x0302u     /* 0=disable slave debug, 1=enable */
 
 #define DBG_CMD_NONE        0x00u
 #define DBG_CMD_I2C1_SCAN   0x01u
@@ -91,6 +92,7 @@ static volatile uint8  g_pcl_last;         /* Last stable PCL state */
 static volatile uint8  g_i2c_power_cmd;    /* I2C power command: 0=OFF, 1=ON */
 static volatile uint8  g_dbg_cmd;          /* Debug command register */
 static volatile uint8  g_dbg_status;       /* Debug status register */
+static volatile uint8  g_dbg_i2c_log;      /* I2C slave debug: 1=on, 0=off */
 
 /* ---- ADC / NTC conversion ---- */
 
@@ -250,6 +252,10 @@ static void on_write(uint16 reg, uint8 val)
     case REG_DBG_CMD:
         g_dbg_cmd = val;
         break;
+    case REG_DBG_I2C_LOG:
+        g_dbg_i2c_log = (val != 0u) ? 1u : 0u;
+        g_riic_slave_dbg_en = g_dbg_i2c_log;
+        break;
     default:
         break;
     }
@@ -265,6 +271,7 @@ static uint8 on_read(uint16 reg)
     case REG_DISP_POWER_CMD:  return g_i2c_power_cmd;
     case REG_DBG_CMD:         return g_dbg_cmd;
     case REG_DBG_STATUS:      return g_dbg_status;
+    case REG_DBG_I2C_LOG:     return g_dbg_i2c_log;
     case REG_TEMP_BL_RAW_HI:  return (uint8)(g_adc_raw >> 8);
     case REG_TEMP_BL_RAW_LO:  return (uint8)(g_adc_raw);
     case REG_TEMP_BL_DEG_HI:  return (uint8)((uint16)g_temp_degc10 >> 8);
@@ -369,6 +376,7 @@ int main(void)
     g_i2c_power_cmd = 1u;   /* Default ON — display turns on when PCL=LOW */
     g_dbg_cmd = DBG_CMD_NONE;
     g_dbg_status = DBG_STATUS_IDLE;
+    g_dbg_i2c_log = 1u;    /* I2C slave debug on by default */
 
     /*
      * Assert 3.3V self-hold FIRST — before anything else.
