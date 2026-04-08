@@ -108,7 +108,8 @@ rh850-baremetal-demo/
 
 ## Branches
 
-- **`main`**: All work happens here. Tested on both 983HH and REMOTE_DISP boards.
+- **`main`**: Stable tested baseline.
+- **`feature/pcl-power-control`**: PCL-based display power control (tested, ready to merge).
 - **`misrac-2025`**: Historical — MISRA compliance work, merged to main.
 
 ## I2C Slave Protocol (16-bit sub-addressing)
@@ -165,6 +166,52 @@ i2ctransfer -y 1 w2@0x50 0x10 0x00 r4@0x50
 - **Conversion:** Integer-only Beta equation with piecewise ln() approximation
 - **Register values from Smart Configurator** (see `tmp-sample-code/renesas-smart-config/`)
 - **Debug log** (DEBUG=on): prints `ADC=xxxx T=xxxx` every 1 second
+
+## PCL Display Power Control (REMOTE_DISP)
+
+AP0_4 (PCL) controls display power state:
+- **PCL LOW** = display ON
+- **PCL HIGH** = display OFF
+
+**Self-hold:** P10_5 (UG3V3_EN) driven HIGH as the very first operation
+in `main()`. PCL from vehicle may be a short pulse — MCU latches its
+own 3.3V supply before the pulse ends.
+
+**State machine** in main loop with 50ms debounce (sampled in 1ms timer):
+```
+DISP_OFF ──(PCL=LOW)──► DISP_ON
+    ▲                       │
+    └───(PCL=HIGH)──────────┘
+```
+
+**Power cycle (verified on hardware):**
+```
+Video pipeline: FPD-Link → Deserializer → FPGA → LCD + Backlight
+
+Power-down (board_power_down):
+  1. LCD shutdown (assert resets)
+  2. Backlight disable
+  3. FPGA reset assert + program low
+  4. FPGA power rails disable
+  (Deserializer + main power stay running)
+
+Power-on (board_power_on):
+  1. FPGA power rails enable + 5ms
+  2. FPGA program + reset release (5ms each)
+  3. Backlight enable
+  4. LCD reset sequence (10ms + 6ms + 5ms + 95ms)
+```
+
+**Key findings from power cycle testing:**
+- Deserializer must stay powered — re-init requires I2C (future work)
+- `port_init()` must NOT re-run on power-on — drives GPIO LOW while
+  already outputs, glitches FPGA/LCD control signals
+- Cold boot uses `board_init()`, re-power uses `board_power_on()`
+- Main power can be disabled during power-down — MCU survives on
+  UG3V3_EN self-hold
+
+**I2C register:** `0x0100` = display state (0=OFF, 1=ON).
+I2C slave stays active in both states.
 
 ## Non-Blocking Debug Architecture
 
@@ -235,6 +282,8 @@ MISRA-safe patterns used throughout:
 | I2C0 | RIIC0 slave: P10_2 (SDA), P10_3 (SCL), 400 kHz fast mode |
 | NTC | NTCS0603E3103FHT on AP0_0, 3.3K pullup, Beta=3960 |
 | Backlight | VLED_ON on P10_11 |
+| PCL | AP0_4 input (LOW=display ON, HIGH=display OFF) |
+| UG3V3_EN | P10_5 output (MCU 3.3V self-hold, assert HIGH at boot) |
 | Power | 7 supply rails with sequenced enable (see board_init.c) |
 | UART | Same as 983HH: P0_13/P0_14, 115200 baud |
 
@@ -273,12 +322,28 @@ MISRA-safe patterns used throughout:
     The first `hal_adc_read()` at boot returns 0. Timer-based readings (100ms+
     after init) are stable and accurate.
 
+11. **UG3V3_EN self-hold must be first operation**: P10_5 must be driven HIGH
+    before anything else in `main()`. PCL from vehicle is a short pulse —
+    MCU loses power if self-hold isn't asserted before the pulse ends.
+
+12. **port_init() must NOT re-run on display re-power**: Drives all GPIO LOW
+    while pins are already outputs, glitching FPGA/LCD signals. Use separate
+    `board_init()` (cold boot) and `board_power_on()` (re-power) paths.
+
+13. **P10_5 must be excluded from port_init clear mask**: Original mask 0x94B3
+    includes bit 5 which drives UG3V3_EN LOW, killing MCU power. Use 0x9493.
+
+14. **Deserializer must stay powered during display power cycle**: FPGA and LCD
+    can be power-cycled, but deserializer re-init requires I2C communication
+    (not yet implemented). Keep deser powered for now.
+
 ## Future Extensions (Planned)
 
+- **Deserializer I2C re-init**: I2C1 master (P8_0/P8_1) for DS90UB9xx
+  configuration after power cycle — currently deser must stay powered
 - **Main message loop** with timer-driven background workers (`lib_msgloop.c/.h`)
 - **DLT/DLS diagnostics**: Binary runtime trace on UART (after text boot banner)
 - **SPI HAL** (`hal_spi.c/.h`): CSIH1 for REMOTE_DISP FPGA communication
-- **I2C1 master**: P8_0/P8_1 for deserializer and touch panel (REMOTE_DISP)
 - **Additional ADC channels**: Supply voltage monitoring
 - **I2C firmware update**: Image staging at 0xF000, bootloader control at 0xFF00
 - **A/B failsafe firmware upgrade**: Bootloader with CRC validation
