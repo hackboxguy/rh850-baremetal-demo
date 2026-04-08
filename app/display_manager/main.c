@@ -312,9 +312,11 @@ static void i2c1_bus_scan(void)
     uint8 addr;
     uint8 col;
 
-    /* Use blocking UART for the scan output (runs from main loop, not ISR) */
+    /* Use blocking UART for scan output. Flush ring buffer first so
+     * any pending ISR debug (e.g. W[0300]=01) prints cleanly before table. */
 #ifdef DEBUG_ENABLED
-    hal_uart_puts("I2C1 scan:\n");
+    (void)hal_uart_drain(512u);
+    hal_uart_puts("\nI2C1 scan:\n");
     hal_uart_puts("     0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f\n");
 
     for (addr = 0u; addr < 0x78u; addr++)
