@@ -319,9 +319,15 @@ static void i2c1_bus_scan(void)
     uint8 addr;
     uint8 col;
 
-    /* Use blocking UART for scan output. Flush ring buffer first so
-     * any pending ISR debug (e.g. W[0300]=01) prints cleanly before table. */
+    /*
+     * Suppress ISR debug, flush ring buffer completely, then print scan.
+     * The disable + flush ensures no ISR output interleaves with the table.
+     */
 #ifdef DEBUG_ENABLED
+    g_riic_slave_dbg_en = 0u;
+    /* Drain ring buffer + wait for UART TX to finish */
+    (void)hal_uart_drain(512u);
+    { volatile uint32 w = 100000u; while (w-- != 0u) { ; } }
     (void)hal_uart_drain(512u);
     hal_uart_puts("\nI2C1 scan:\n");
     hal_uart_puts("     0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f\n");
@@ -360,6 +366,8 @@ static void i2c1_bus_scan(void)
         }
     }
     hal_uart_puts("\n");
+    /* Restore ISR debug to user's setting */
+    g_riic_slave_dbg_en = g_dbg_i2c_log;
 #endif
 }
 
