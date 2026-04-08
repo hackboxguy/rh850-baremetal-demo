@@ -164,10 +164,13 @@ i2ctransfer -y 1 w2@0x66 0x03 0x03 r1@0x66     # Read device count
 i2ctransfer -y 1 w2@0x66 0x03 0x80 r128@0x66   # Read scan buffer
 i2ctransfer -y 1 w3@0x66 0x03 0x02 0x00        # Mute debug
 i2ctransfer -y 1 w3@0x66 0x03 0x02 0x01        # Unmute debug
-# I2C bridge: read RTQ6749 (0x6B) fault reg (0x1D), 1 byte
+# I2C bridge: read RTQ6749 PMIC (0x6B) fault reg (0x1D), 1 byte
 i2ctransfer -y 1 w6@0x66 0x03 0x10 0x6B 0x1D 0x01 0x01  # setup+read
 i2ctransfer -y 1 w2@0x66 0x03 0x14 r1@0x66               # poll status
 i2ctransfer -y 1 w2@0x66 0x03 0x20 r1@0x66               # read result
+# I2C bridge: read RTQ6749 PMIC (0x30) 4 bytes from reg 0x00
+i2ctransfer -y 1 w6@0x66 0x03 0x10 0x30 0x00 0x04 0x01   # setup+read
+i2ctransfer -y 1 w2@0x66 0x03 0x20 r4@0x66               # read 4 bytes
 ```
 
 ## ADC / NTC Temperature Monitoring (REMOTE_DISP)
@@ -186,7 +189,7 @@ i2ctransfer -y 1 w2@0x66 0x03 0x20 r1@0x66               # read result
 - **Output:** i2cdetect-style table on UART debug terminal
 - **ISR debug auto-suppressed** during scan for clean output, restored after
 - **I2C slave debug log** controllable via register 0x0302 (0=off, 1=on)
-- **Devices found on REMOTE_DISP:** 0x30 (DS90UB9xx deserializer), 0x60 (varies by display size), 0x6B (RTQ6749 PMIC)
+- **Devices found on REMOTE_DISP:** 0x30 (RTQ6749 PMIC addr 2), 0x60 (varies by display size), 0x6B (RTQ6749 PMIC addr 1)
 
 ## PCL Display Power Control (REMOTE_DISP)
 
@@ -397,7 +400,7 @@ MISRA-safe patterns used throughout:
 ## Future Extensions (Planned)
 
 - **Deserializer I2C re-init**: Use hal_i2c1_bitbang to configure DS90UB9xx
-  (at 0x30) after power cycle — currently deser must stay powered
+  after power cycle — currently deser must stay powered
 - **RTQ6749 PMIC control** via I2C1 (address 0x6B) — voltage monitoring, power management
 - **Main message loop** with timer-driven background workers (`lib_msgloop.c/.h`)
 - **DLT/DLS diagnostics**: Binary runtime trace on UART (after text boot banner)
