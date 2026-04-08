@@ -397,9 +397,9 @@ void board_init(void)
 void board_power_down(void)
 {
     /*
-     * Reverse order of board_init steps 8..2.
-     * MCU stays powered via UG3V3_EN self-hold (P10_5 = HIGH),
-     * which is asserted at boot and never deasserted.
+     * Minimal power-down: only LCD and backlight.
+     * Keep FPGA, deserializer, and main power running so that
+     * re-power only needs LCD reset + backlight enable.
      */
 
     /* 8. LCD shutdown (assert resets, power off) */
@@ -407,32 +407,15 @@ void board_power_down(void)
 
     /* 7. Backlight disable */
     backlight_disable();
-
-    /* 5. Deserializer power disable */
-    deser_power_disable();
-
-    /* 4. FPGA reset + program deassert */
-    fpga_shutdown();
-
-    /* 3. FPGA power rails disable */
-    power_fpga_disable();
-
-    /* 2. Main power supplies disable (5V, 3.3V_SW, PMIC).
-     * MCU survives on UG3V3_EN self-hold. */
-    power_main_disable();
-
-    /* Wait for capacitors to discharge before any re-power.
-     * Without this, a quick OFF→ON cycle may leave FPGA/deser in
-     * an undefined state (partially powered, config lost). */
-    delay_ms(200);
 }
 
 void board_power_on(void)
 {
     /*
      * Re-power after board_power_down().
-     * Skips port_init() — GPIO directions are still configured from
-     * cold boot. Only runs the power-on stages (2-8).
+     * FPGA, deserializer, and main power are still running.
+     * Only need backlight + LCD reset sequence.
      */
-    power_on_sequence();
+    backlight_enable();
+    lcd_reset_sequence();
 }
