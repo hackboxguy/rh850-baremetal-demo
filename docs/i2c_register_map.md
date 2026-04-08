@@ -148,24 +148,78 @@ Default I2C power state = ON at boot. Read current state at `0x0100`.
 
 | Address | Name | Access | Description |
 |---------|------|--------|-------------|
-| `0x0300` | `DBG_CMD` | RW | Debug command: 0x00=clear, 0x01=I2C1 bus scan |
+| `0x0300` | `DBG_CMD` | RW | Debug command (see table below) |
 | `0x0301` | `DBG_STATUS` | RO | Command status: 0=idle, 1=running, 2=done |
 | `0x0302` | `DBG_I2C_LOG` | RW | I2C slave debug prints: 0x00=off, 0x01=on (default) |
-| `0x0303-0x03FF` | (reserved) | | Future: FPGA status dump, deser register read, etc. |
+| `0x0303` | `SCAN_DEV_COUNT` | RO | Number of I2C1 devices found in last scan |
+| `0x0304-0x037F` | (reserved) | | Future: FPGA status, deser registers, etc. |
+| `0x0380-0x03FF` | `SCAN_BUFFER` | RO | 128 bytes: scan result per 7-bit address |
 
-### I2C1 Bus Scan
+### Debug Commands (write to 0x0300)
+
+| Value | Name | Description |
+|:-----:|------|-------------|
+| `0x00` | Clear | No-op / clear command register |
+| `0x01` | Scan + Print | Scan I2C1 bus, print i2cdetect table to UART, fill buffer |
+| `0x02` | Scan to Buffer | Scan I2C1 bus, fill buffer only (works in release builds) |
+| `0x03` | Flush | Clear scan buffer and reset status to idle |
+
+### Scan Buffer (0x0380-0x03FF)
+
+128 bytes, one per 7-bit I2C address (0x00-0x7F):
+- `0x00` = no device (NACK, timeout, or reserved address)
+- `0x01` = device found (ACK)
+
+Addresses 0x00-0x02 and 0x78-0x7F are reserved (always 0x00).
+
+### I2C1 Bus Scan — UART Mode (DEBUG builds)
 
 Scans all 7-bit addresses (0x03-0x77) on the second I2C bus (P8_0/P8_1,
 bit-banged) and prints an i2cdetect-style table to the UART debug terminal.
+Also fills the scan buffer.
 
 ISR debug prints are automatically suppressed during the scan for clean output.
 
 ```bash
-# Trigger scan (one command, auto-suppresses ISR debug)
-i2ctransfer -y 1 w3@0x50 0x03 0x00 0x01
+# Trigger scan + UART print (DEBUG builds, address 0x66 for REMOTE_DISP)
+i2ctransfer -y 1 w3@0x66 0x03 0x00 0x01
+```
 
-# Check status (optional)
-i2ctransfer -y 1 w2@0x50 0x03 0x01 r1@0x50
+### I2C1 Bus Scan — Buffer Mode (all builds)
+
+Scans I2C1 bus and stores results in the 128-byte scan buffer at 0x0380.
+Works in both DEBUG and release builds (no UART needed).
+
+```bash
+# 1. Flush scan buffer
+i2ctransfer -y 1 w3@0x66 0x03 0x00 0x03
+
+# 2. Trigger scan to buffer
+i2ctransfer -y 1 w3@0x66 0x03 0x00 0x02
+
+# 3. Poll status until done (0x02)
+i2ctransfer -y 1 w2@0x66 0x03 0x01 r1@0x66
+
+# 4. Read device count
+i2ctransfer -y 1 w2@0x66 0x03 0x03 r1@0x66
+
+# 5. Read full scan buffer (128 bytes)
+i2ctransfer -y 1 w2@0x66 0x03 0x80 r128@0x66
+```
+
+Python parsing example:
+```python
+import subprocess
+
+# Read scan buffer (128 bytes from 0x0380)
+raw = subprocess.check_output(
+    ["i2ctransfer", "-y", "1", "w2@0x66", "0x03", "0x80", "r128@0x66"])
+buf = [int(x, 16) for x in raw.split()]
+
+print("I2C1 devices found:")
+for addr in range(0x03, 0x78):
+    if buf[addr] != 0:
+        print(f"  0x{addr:02X} (write=0x{addr*2:02X}, read=0x{addr*2+1:02X})")
 ```
 
 ### I2C Slave Debug Control

@@ -60,16 +60,23 @@
 #define REG_DISP_POWER_CMD  0x0200u     /* Display power command (0=OFF, 1=ON) RW */
 
 /* Page 0x03: Debug commands */
-#define REG_DBG_CMD         0x0300u     /* Write 0x01=I2C1 scan, 0x00=clear */
+#define REG_DBG_CMD         0x0300u     /* Debug command register */
 #define REG_DBG_STATUS      0x0301u     /* 0=idle, 1=running, 2=done */
 #define REG_DBG_I2C_LOG     0x0302u     /* 0=disable slave debug, 1=enable */
+#define REG_SCAN_DEV_COUNT  0x0303u     /* Number of devices found (RO) */
+#define REG_SCAN_BUF_START  0x0380u     /* Scan buffer: 128 bytes (0x0380-0x03FF) */
+#define REG_SCAN_BUF_END    0x03FFu
 
 #define DBG_CMD_NONE        0x00u
-#define DBG_CMD_I2C1_SCAN   0x01u
+#define DBG_CMD_I2C1_PRINT  0x01u       /* Scan + print to UART (DEBUG builds) */
+#define DBG_CMD_I2C1_SCAN   0x02u       /* Scan to buffer (all builds) */
+#define DBG_CMD_SCAN_FLUSH  0x03u       /* Clear scan buffer */
 
 #define DBG_STATUS_IDLE     0x00u
 #define DBG_STATUS_RUNNING  0x01u
 #define DBG_STATUS_DONE     0x02u
+
+#define SCAN_BUF_SIZE       128u        /* 7-bit address space: 0x00-0x7F */
 
 /* Page 0x10: Diagnostics */
 #define REG_TEMP_BL_RAW_HI  0x1000u
@@ -100,6 +107,8 @@ static volatile uint8  g_i2c_power_cmd;    /* I2C power command: 0=OFF, 1=ON */
 static volatile uint8  g_dbg_cmd;          /* Debug command register */
 static volatile uint8  g_dbg_status;       /* Debug status register */
 static volatile uint8  g_dbg_i2c_log;      /* I2C slave debug: 1=on, 0=off */
+static volatile uint8  g_scan_buf[SCAN_BUF_SIZE]; /* 0=no device, 1=ACK */
+static volatile uint8  g_scan_dev_count;   /* Number of devices found */
 
 /* ---- ADC / NTC conversion ---- */
 
@@ -285,11 +294,18 @@ static uint8 on_read(uint16 reg)
     case REG_DBG_CMD:         return g_dbg_cmd;
     case REG_DBG_STATUS:      return g_dbg_status;
     case REG_DBG_I2C_LOG:     return g_dbg_i2c_log;
+    case REG_SCAN_DEV_COUNT:  return g_scan_dev_count;
     case REG_TEMP_BL_RAW_HI:  return (uint8)(g_adc_raw >> 8);
     case REG_TEMP_BL_RAW_LO:  return (uint8)(g_adc_raw);
     case REG_TEMP_BL_DEG_HI:  return (uint8)((uint16)g_temp_degc10 >> 8);
     case REG_TEMP_BL_DEG_LO:  return (uint8)((uint16)g_temp_degc10);
-    default:                  return 0xFFu;
+    default:
+        /* Scan buffer: 0x0380-0x03FF maps to g_scan_buf[0..127] */
+        if ((reg >= REG_SCAN_BUF_START) && (reg <= REG_SCAN_BUF_END))
+        {
+            return g_scan_buf[reg - REG_SCAN_BUF_START];
+        }
+        return 0xFFu;
     }
 }
 
@@ -325,62 +341,106 @@ static void display_power_off(void)
     DBG_PUTS("DISP OFF\n");
 }
 
-/* ---- I2C1 bus scan (i2cdetect style) ---- */
+/* ---- I2C1 bus scan ---- */
 
-static void i2c1_bus_scan(void)
+static void scan_flush(void)
+{
+    uint8 i;
+    for (i = 0u; i < SCAN_BUF_SIZE; i++)
+    {
+        g_scan_buf[i] = 0u;
+    }
+    g_scan_dev_count = 0u;
+    g_dbg_status = DBG_STATUS_IDLE;
+}
+
+/*
+ * Scan I2C1 bus into buffer. Works in both release and debug builds.
+ * Results stored in g_scan_buf[0..127]: 0=no device, 1=ACK.
+ */
+static void i2c1_scan_to_buffer(void)
 {
     uint8 addr;
-    uint8 col;
+    uint8 count = 0u;
 
-    /*
-     * Suppress ISR debug, flush ring buffer completely, then print scan.
-     * The disable + flush ensures no ISR output interleaves with the table.
-     */
-#ifdef DEBUG_ENABLED
-    g_riic_slave_dbg_en = 0u;
-    /* Drain ring buffer + wait for UART TX to finish */
-    (void)hal_uart_drain(512u);
-    { volatile uint32 w = 100000u; while (w-- != 0u) { ; } }
-    (void)hal_uart_drain(512u);
-    hal_uart_puts("\nI2C1 scan:\n");
-    hal_uart_puts("     0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f\n");
-
-    for (addr = 0u; addr < 0x78u; addr++)
+    for (addr = 0u; addr < SCAN_BUF_SIZE; addr++)
     {
-        col = addr & 0x0Fu;
-
-        /* Print row header */
-        if (col == 0u)
-        {
-            hal_uart_put_hex8(addr);
-            hal_uart_putc(':');
-        }
-
-        /* Skip reserved addresses 0x00-0x02 */
         if (addr < 0x03u)
         {
-            hal_uart_puts("   ");
+            g_scan_buf[addr] = 0u;  /* Reserved addresses */
+        }
+        else if (addr >= 0x78u)
+        {
+            g_scan_buf[addr] = 0u;  /* Reserved 10-bit prefix range */
         }
         else if (hal_i2c1_bitbang_probe(addr) != 0u)
         {
-            /* Device found */
-            hal_uart_putc(' ');
-            hal_uart_put_hex8(addr);
+            g_scan_buf[addr] = 1u;
+            count++;
         }
         else
         {
-            hal_uart_puts(" --");
-        }
-
-        /* End of row */
-        if (col == 0x0Fu)
-        {
-            hal_uart_puts("\n");
+            g_scan_buf[addr] = 0u;
         }
     }
-    hal_uart_puts("\n");
-    /* Restore ISR debug to user's setting */
-    g_riic_slave_dbg_en = g_dbg_i2c_log;
+    g_scan_dev_count = count;
+}
+
+/*
+ * Scan I2C1 bus and print i2cdetect-style table to UART (DEBUG builds only).
+ * Also fills the scan buffer so results are readable via I2C.
+ */
+static void i2c1_scan_and_print(void)
+{
+    /* Scan to buffer first */
+    i2c1_scan_to_buffer();
+
+#ifdef DEBUG_ENABLED
+    {
+        uint8 addr;
+        uint8 col;
+
+        /* Suppress ISR debug, flush ring buffer */
+        g_riic_slave_dbg_en = 0u;
+        (void)hal_uart_drain(512u);
+        { volatile uint32 w = 100000u; while (w-- != 0u) { ; } }
+        (void)hal_uart_drain(512u);
+
+        hal_uart_puts("\nI2C1 scan:\n");
+        hal_uart_puts("     0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f\n");
+
+        for (addr = 0u; addr < 0x78u; addr++)
+        {
+            col = addr & 0x0Fu;
+
+            if (col == 0u)
+            {
+                hal_uart_put_hex8(addr);
+                hal_uart_putc(':');
+            }
+
+            if (addr < 0x03u)
+            {
+                hal_uart_puts("   ");
+            }
+            else if (g_scan_buf[addr] != 0u)
+            {
+                hal_uart_putc(' ');
+                hal_uart_put_hex8(addr);
+            }
+            else
+            {
+                hal_uart_puts(" --");
+            }
+
+            if (col == 0x0Fu)
+            {
+                hal_uart_puts("\n");
+            }
+        }
+        hal_uart_puts("\n");
+        g_riic_slave_dbg_en = g_dbg_i2c_log;
+    }
 #endif
 }
 
@@ -398,6 +458,8 @@ int main(void)
     g_dbg_cmd = DBG_CMD_NONE;
     g_dbg_status = DBG_STATUS_IDLE;
     g_dbg_i2c_log = 1u;    /* I2C slave debug on by default */
+    g_scan_dev_count = 0u;
+    scan_flush();
 
     /*
      * Assert 3.3V self-hold FIRST — before anything else.
@@ -503,10 +565,21 @@ int main(void)
 
             switch (cmd)
             {
-            case DBG_CMD_I2C1_SCAN:
+            case DBG_CMD_I2C1_PRINT:
+                /* Scan + print to UART (also fills buffer) */
                 g_dbg_status = DBG_STATUS_RUNNING;
-                i2c1_bus_scan();
+                i2c1_scan_and_print();
                 g_dbg_status = DBG_STATUS_DONE;
+                break;
+            case DBG_CMD_I2C1_SCAN:
+                /* Scan to buffer only (works without UART/DEBUG) */
+                g_dbg_status = DBG_STATUS_RUNNING;
+                i2c1_scan_to_buffer();
+                g_dbg_status = DBG_STATUS_DONE;
+                break;
+            case DBG_CMD_SCAN_FLUSH:
+                /* Clear scan buffer */
+                scan_flush();
                 break;
             default:
                 break;
