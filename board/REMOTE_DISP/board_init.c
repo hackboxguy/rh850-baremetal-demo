@@ -397,9 +397,9 @@ void board_init(void)
 void board_power_down(void)
 {
     /*
-     * Minimal power-down: only LCD and backlight.
-     * Keep FPGA, deserializer, and main power running so that
-     * re-power only needs LCD reset + backlight enable.
+     * Power-down: LCD, backlight, and FPGA.
+     * Keep deserializer and main power running.
+     * Video pipeline: fpdlink -> deser -> FPGA -> LCD + backlight
      */
 
     /* 8. LCD shutdown (assert resets, power off) */
@@ -407,15 +407,23 @@ void board_power_down(void)
 
     /* 7. Backlight disable */
     backlight_disable();
+
+    /* 4. FPGA reset + program deassert */
+    fpga_shutdown();
+
+    /* 3. FPGA power rails disable */
+    power_fpga_disable();
 }
 
 void board_power_on(void)
 {
     /*
      * Re-power after board_power_down().
-     * FPGA, deserializer, and main power are still running.
-     * Only need backlight + LCD reset sequence.
+     * Deserializer and main power are still running.
+     * Re-init FPGA + LCD + backlight.
      */
+    power_fpga_enable();
+    fpga_program_and_reset();
     backlight_enable();
     lcd_reset_sequence();
 }
