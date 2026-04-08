@@ -178,10 +178,27 @@ in `main()`. PCL from vehicle may be a short pulse — MCU latches its
 own 3.3V supply before the pulse ends.
 
 **State machine** in main loop with 50ms debounce (sampled in 1ms timer):
+
+Two sources control display power with priority logic:
+- **PCL** (AP0_4): hardware signal from vehicle (HIGH=OFF, always wins)
+- **I2C** (reg 0x0200): software command from head-unit (0x00=OFF, 0x01=ON)
+
 ```
-DISP_OFF ──(PCL=LOW)──► DISP_ON
+Display ON  = (PCL=LOW) AND (I2C cmd=ON)
+Display OFF = (PCL=HIGH) OR (I2C cmd=OFF)
+```
+
+```
+DISP_OFF ──(want_on)──► DISP_ON
     ▲                       │
-    └───(PCL=HIGH)──────────┘
+    └───(!want_on)──────────┘
+```
+
+**I2C display control (register 0x0200):**
+```bash
+i2ctransfer -y 1 w3@0x50 0x02 0x00 0x00    # display OFF
+i2ctransfer -y 1 w3@0x50 0x02 0x00 0x01    # display ON
+i2ctransfer -y 1 w2@0x50 0x01 0x00 r1@0x50 # read state (0=OFF, 1=ON)
 ```
 
 **Power cycle (verified on hardware):**
@@ -198,8 +215,10 @@ Power-down (board_power_down):
 Power-on (board_power_on):
   1. FPGA power rails enable + 5ms
   2. FPGA program + reset release (5ms each)
-  3. Backlight enable
-  4. LCD reset sequence (10ms + 6ms + 5ms + 95ms)
+  3. FPGA config settle delay (50ms)
+  4. SPI CS init
+  5. Backlight enable
+  6. LCD reset sequence (10ms + 6ms + 5ms + 95ms)
 ```
 
 **Key findings from power cycle testing:**
@@ -336,6 +355,15 @@ MISRA-safe patterns used throughout:
 14. **Deserializer must stay powered during display power cycle**: FPGA and LCD
     can be power-cycled, but deserializer re-init requires I2C communication
     (not yet implemented). Keep deser powered for now.
+
+15. **FPGA needs 50ms settle after re-power before LCD init**: After FPGA power
+    rails + program + reset release, the FPGA loads its bitstream from flash.
+    Without a settle delay, LCD reset runs before FPGA can drive pixels —
+    display blinks but stays black. 50ms is sufficient.
+
+16. **SPI CS must be re-initialized on power-on**: `spi_cs_init()` was only in
+    cold boot path. Missing from `board_power_on()` caused first ON after OFF
+    to fail.
 
 ## Future Extensions (Planned)
 

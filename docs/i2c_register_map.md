@@ -96,8 +96,22 @@ Set at build time: `make VERSION=01.10`
 
 | Address | Name | Access | Description |
 |---------|------|--------|-------------|
-| `0x0200` | `LED_CONTROL` | RW | LED state (bit0 = P9_6, 1=ON 0=OFF) |
-| `0x0201-0x02FF` | (reserved) | RW | Reserved for: GPIO outputs, PWM duty, mode select |
+| `0x0200` | `DISP_POWER_CMD` | RW | Display power command (0x00=OFF, 0x01=ON). REMOTE_DISP only. |
+| `0x0200` | `LED_CONTROL` | RW | LED state (bit0 = P9_6, 1=ON 0=OFF). 983HH only. |
+| `0x0201-0x02FF` | (reserved) | RW | Reserved for: backlight PWM, GPIO outputs, mode select |
+
+### Display Power Control (REMOTE_DISP)
+
+Two sources control display power with priority logic:
+- **PCL** (AP0_4): hardware signal from vehicle (HIGH=OFF, always wins)
+- **I2C** (reg 0x0200): software command from head-unit
+
+```
+Display ON  = (PCL=LOW) AND (I2C cmd=ON)
+Display OFF = (PCL=HIGH) OR (I2C cmd=OFF)
+```
+
+Default I2C power state = ON at boot. Read current state at `0x0100`.
 
 ## Page 0x10: Diagnostics
 
