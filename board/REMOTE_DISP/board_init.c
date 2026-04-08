@@ -288,6 +288,66 @@ static void lcd_reset_sequence(void)
     hal_gpio_write(PIN_LCD_PON_PORT, PIN_LCD_PON_BIT, 1);
 }
 
+/* ---- Power-down helpers (reverse of power-up) ---- */
+
+static void lcd_shutdown(void)
+{
+    /* Reverse of lcd_reset_sequence: assert resets, power off */
+    hal_gpio_write(PIN_LCD_PON_PORT, PIN_LCD_PON_BIT, 0);
+    hal_gpio_write(PIN_LCD_TP_RST_PORT, PIN_LCD_TP_RST_BIT, 0);
+    delay_ms(5);
+    hal_gpio_write(PIN_LCD_RST_PORT, PIN_LCD_RST_BIT, 0);
+    delay_ms(5);
+}
+
+static void backlight_disable(void)
+{
+    hal_gpio_write(PIN_VLED_ON_PORT, PIN_VLED_ON_BIT, 0);
+}
+
+static void deser_power_disable(void)
+{
+    /* WP assert (write-protect) */
+    PORTAPSR0 = PSR_CLR(PIN_DESER_WP_BIT);
+    delay_ms(1);
+
+    /* DCDC_RST (P8_8) -> LOW */
+    hal_gpio_write(PIN_DCDC_RST_PORT, PIN_DCDC_RST_BIT, 0);
+
+    /* IOC_ON_UG1V15 (AP0_6) -> LOW */
+    PORTAPSR0 = PSR_CLR(PIN_IOC_ON_UG1V15_BIT);
+
+    /* IOC_ON_UG1V8 (AP0_5) -> LOW */
+    PORTAPSR0 = PSR_CLR(PIN_IOC_ON_UG1V8_BIT);
+    delay_ms(5);
+}
+
+static void fpga_shutdown(void)
+{
+    /* Assert FPGA reset, then deassert program */
+    hal_gpio_write(PIN_FPGA_RSTN_PORT, PIN_FPGA_RSTN_BIT, 0);
+    delay_ms(1);
+    hal_gpio_write(PIN_FPGA_PROGRAM_PORT, PIN_FPGA_PROGRAM_BIT, 0);
+    delay_ms(5);
+}
+
+static void power_fpga_disable(void)
+{
+    hal_gpio_write(PIN_IOC_ON_UG2V5_PORT, PIN_IOC_ON_UG2V5_BIT, 0);
+    hal_gpio_write(PIN_IOC_ON_UG1V2_PORT, PIN_IOC_ON_UG1V2_BIT, 0);
+    hal_gpio_write(PIN_IOC_ON_UG1V35_PORT, PIN_IOC_ON_UG1V35_BIT, 0);
+    hal_gpio_write(PIN_IOC_ON_UG1V1_PORT, PIN_IOC_ON_UG1V1_BIT, 0);
+    delay_ms(5);
+}
+
+static void power_main_disable(void)
+{
+    hal_gpio_write(PIN_RTQ6749_EN_PORT, PIN_RTQ6749_EN_BIT, 0);
+    hal_gpio_write(PIN_EN_3V3_SW_PORT, PIN_EN_3V3_SW_BIT, 0);
+    hal_gpio_write(PIN_IOC_ON_UG5V_PORT, PIN_IOC_ON_UG5V_BIT, 0);
+    delay_ms(5);
+}
+
 /* ---- Public API ---- */
 
 void board_init(void)
@@ -315,4 +375,27 @@ void board_init(void)
 
     /* 8. LCD panel reset sequence */
     lcd_reset_sequence();
+}
+
+void board_power_down(void)
+{
+    /* Reverse order of board_init steps 8..2 */
+
+    /* 8. LCD shutdown (assert resets, power off) */
+    lcd_shutdown();
+
+    /* 7. Backlight disable */
+    backlight_disable();
+
+    /* 5. Deserializer power disable */
+    deser_power_disable();
+
+    /* 4. FPGA reset + program deassert */
+    fpga_shutdown();
+
+    /* 3. FPGA power rails disable */
+    power_fpga_disable();
+
+    /* 2. Main power supplies disable */
+    power_main_disable();
 }

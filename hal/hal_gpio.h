@@ -27,4 +27,10 @@ void hal_gpio_set_analog_input(uint8 start_bit, uint8 count);
 /* Read DIP switches from AP0 (uses BOARD_DIP_START_BIT / BOARD_DIP_COUNT) */
 uint8 hal_gpio_read_dip(void);
 
+/* Read a single analog port pin (AP0). Returns 1 if high, 0 if low. */
+uint8 hal_gpio_read_ap0(uint8 bit);
+
+/* Enable input buffer for a single AP0 pin (for digital read) */
+void hal_gpio_set_ap0_input(uint8 bit);
+
 #endif /* HAL_GPIO_H */

@@ -76,3 +76,16 @@ uint8 hal_gpio_read_dip(void)
                    (((uint32)1u << BOARD_DIP_COUNT) - 1u));
 }
 #endif /* BOARD_DIP_COUNT */
+
+void hal_gpio_set_ap0_input(uint8 bit)
+{
+    /* Set as input */
+    PORTAPMSR0 = PSR_SET(bit);
+    /* Enable input buffer for digital readback */
+    PORTAPIBC0 |= (uint16)((uint16)1u << bit);
+}
+
+uint8 hal_gpio_read_ap0(uint8 bit)
+{
+    return ((PORTAPPR0 & ((uint32)1u << bit)) != 0u) ? 1u : 0u;
+}

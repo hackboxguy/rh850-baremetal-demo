@@ -105,7 +105,12 @@
 #define PIN_SPI_CS_PORT         0       /* P0_11: SPI chip select */
 #define PIN_SPI_CS_BIT          11
 
-/* ---- Board init ---- */
+/* ---- PCL (power control line) ---- */
+#define PIN_PCL_BIT             4       /* AP0_4: PCL input (LOW=ON, HIGH=OFF) */
+#define PCL_DEBOUNCE_MS         50u     /* Debounce: 50 consecutive same readings */
+
+/* ---- Board init / power control ---- */
 void board_init(void);
+void board_power_down(void);
 
 #endif /* BOARD_REMOTE_DISP_H */
