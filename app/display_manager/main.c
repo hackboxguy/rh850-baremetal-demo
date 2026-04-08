@@ -30,6 +30,7 @@
 #include "hal_timer.h"
 #include "hal_uart.h"
 #include "lib_boot.h"
+#include "lib_buildinfo.h"
 #include "lib_debug.h"
 
 /* Firmware version (BCD) — provided by Makefile via -D flags. */
@@ -45,6 +46,12 @@
 /* Page 0x00: Device info */
 #define REG_FW_MAJOR        0x0000u
 #define REG_FW_MINOR        0x0001u
+#define REG_BUILD_YEAR_HI   0x0002u
+#define REG_BUILD_YEAR_LO   0x0003u
+#define REG_BUILD_MONTH     0x0004u
+#define REG_BUILD_DAY       0x0005u
+#define REG_BUILD_HOUR      0x0006u
+#define REG_BUILD_MINUTE    0x0007u
 
 /* Page 0x01: Status */
 #define REG_DISP_STATE      0x0100u     /* Display power state (0=OFF, 1=ON) RO */
@@ -267,6 +274,12 @@ static uint8 on_read(uint16 reg)
     {
     case REG_FW_MAJOR:        return FW_VERSION_MAJOR;
     case REG_FW_MINOR:        return FW_VERSION_MINOR;
+    case REG_BUILD_YEAR_HI:   return BUILD_YEAR_HI;
+    case REG_BUILD_YEAR_LO:   return BUILD_YEAR_LO;
+    case REG_BUILD_MONTH:     return BUILD_MONTH;
+    case REG_BUILD_DAY:       return BUILD_DAY;
+    case REG_BUILD_HOUR:      return BUILD_HOUR;
+    case REG_BUILD_MINUTE:    return BUILD_MINUTE;
     case REG_DISP_STATE:      return g_disp_state;
     case REG_DISP_POWER_CMD:  return g_i2c_power_cmd;
     case REG_DBG_CMD:         return g_dbg_cmd;

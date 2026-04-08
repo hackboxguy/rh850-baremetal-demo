@@ -24,6 +24,7 @@
 #include "hal_riic_slave.h"
 #include "hal_timer.h"
 #include "lib_boot.h"
+#include "lib_buildinfo.h"
 #include "lib_debug.h"
 
 /* Firmware version (BCD) — provided by Makefile via -D flags.
@@ -39,6 +40,12 @@
 /* Register map pages */
 #define REG_FW_MAJOR        0x0000u     /* Firmware version major (BCD) */
 #define REG_FW_MINOR        0x0001u     /* Firmware version minor (BCD) */
+#define REG_BUILD_YEAR_HI   0x0002u     /* Build year high BCD (e.g. 0x20) */
+#define REG_BUILD_YEAR_LO   0x0003u     /* Build year low BCD (e.g. 0x26) */
+#define REG_BUILD_MONTH     0x0004u     /* Build month BCD (0x01-0x12) */
+#define REG_BUILD_DAY       0x0005u     /* Build day BCD (0x01-0x31) */
+#define REG_BUILD_HOUR      0x0006u     /* Build hour BCD (0x00-0x23) */
+#define REG_BUILD_MINUTE    0x0007u     /* Build minute BCD (0x00-0x59) */
 #define REG_DIP             0x0100u     /* DIP switches */
 #define REG_LED             0x0200u     /* LED control (bit0 = P9_6) */
 
@@ -62,9 +69,15 @@ static uint8 on_read(uint16 reg)
 {
     switch (reg)
     {
-    case REG_FW_MAJOR:  return FW_VERSION_MAJOR;
-    case REG_FW_MINOR:  return FW_VERSION_MINOR;
-    case REG_DIP:       return hal_gpio_read_dip();
+    case REG_FW_MAJOR:      return FW_VERSION_MAJOR;
+    case REG_FW_MINOR:      return FW_VERSION_MINOR;
+    case REG_BUILD_YEAR_HI: return BUILD_YEAR_HI;
+    case REG_BUILD_YEAR_LO: return BUILD_YEAR_LO;
+    case REG_BUILD_MONTH:   return BUILD_MONTH;
+    case REG_BUILD_DAY:     return BUILD_DAY;
+    case REG_BUILD_HOUR:    return BUILD_HOUR;
+    case REG_BUILD_MINUTE:  return BUILD_MINUTE;
+    case REG_DIP:           return hal_gpio_read_dip();
     case REG_LED:       return g_led_state;
     default:            return 0xFFu;
     }

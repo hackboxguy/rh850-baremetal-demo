@@ -128,7 +128,7 @@ Register map (see `docs/i2c_register_map.md` for full spec):
 
 | Range | Page | Implemented registers |
 |-------|------|-----------------------|
-| `0x0000-0x00FF` | Device Info (RO) | FW version BCD at 0x0000-0x0001 |
+| `0x0000-0x00FF` | Device Info (RO) | FW version 0x0000-0x0001, build date/time 0x0002-0x0007 |
 | `0x0100-0x01FF` | Status (RO) | Display state at 0x0100, DIP switches (983HH) |
 | `0x0200-0x02FF` | Control (RW) | Display power at 0x0200, LED (983HH) |
 | `0x0300-0x03FF` | Debug (RW) | Scan cmd 0x0300, status 0x0301, I2C log 0x0302 |

@@ -66,24 +66,55 @@ Reads from unimplemented registers return `0xFF`.
 
 ## Page 0x00: Device Info
 
-| Address | Name | Access | Description |
-|---------|------|--------|-------------|
-| `0x0000` | `FW_VERSION_MAJOR` | RO | Firmware major version (BCD) |
-| `0x0001` | `FW_VERSION_MINOR` | RO | Firmware minor version (BCD) |
-| `0x0002-0x00FF` | (reserved) | RO | Reserved for: HW revision, board ID, serial number, capabilities bitmap |
+| Address | Name | Access | Format | Description |
+|---------|------|--------|--------|-------------|
+| `0x0000` | `FW_VERSION_MAJOR` | RO | BCD | Firmware major version |
+| `0x0001` | `FW_VERSION_MINOR` | RO | BCD | Firmware minor version |
+| `0x0002` | `BUILD_YEAR_HI` | RO | BCD | Build year high (e.g. 0x20) |
+| `0x0003` | `BUILD_YEAR_LO` | RO | BCD | Build year low (e.g. 0x26) |
+| `0x0004` | `BUILD_MONTH` | RO | BCD | Build month (0x01-0x12) |
+| `0x0005` | `BUILD_DAY` | RO | BCD | Build day (0x01-0x31) |
+| `0x0006` | `BUILD_HOUR` | RO | BCD | Build hour (0x00-0x23) |
+| `0x0007` | `BUILD_MINUTE` | RO | BCD | Build minute (0x00-0x59) |
+| `0x0008-0x00FF` | (reserved) | RO | | Reserved for: HW revision, board ID, serial number |
 
 ### Firmware Version Encoding
 
-Version is stored as two BCD bytes. Examples:
+Version is stored as two BCD bytes. Set at build time: `make VERSION=01.10`
 
 | `0x0000` | `0x0001` | Interpreted as |
 |----------|----------|----------------|
 | `0x01` | `0x00` | v1.00 |
 | `0x01` | `0x10` | v1.10 |
 | `0x02` | `0x05` | v2.05 |
-| `0x12` | `0x34` | v12.34 |
 
-Set at build time: `make VERSION=01.10`
+### Build Date/Time Encoding
+
+All BCD format — each byte is human-readable in hex.
+
+| Bytes (0x0002-0x0007) | Interpreted as |
+|------------------------|----------------|
+| `0x20 0x26 0x04 0x08 0x17 0x30` | 2026-04-08 17:30 |
+| `0x20 0x25 0x11 0x15 0x09 0x45` | 2025-11-15 09:45 |
+
+Read all device info in one shot (8 bytes):
+```bash
+# 983HH
+i2ctransfer -y 1 w2@0x50 0x00 0x00 r8@0x50
+# REMOTE_DISP
+i2ctransfer -y 1 w2@0x66 0x00 0x00 r8@0x66
+# Example: 0x01 0x10 0x20 0x26 0x04 0x08 0x17 0x30
+#          v1.10     2026-04-08  17:30
+```
+
+Python parsing:
+```python
+data = [0x01, 0x10, 0x20, 0x26, 0x04, 0x08, 0x17, 0x30]
+ver = f"v{data[0]:02X}.{data[1]:02X}"
+date = f"{data[2]:02X}{data[3]:02X}-{data[4]:02X}-{data[5]:02X}"
+time = f"{data[6]:02X}:{data[7]:02X}"
+print(f"{ver} built {date} {time}")  # v01.10 built 2026-04-08 17:30
+```
 
 ## Page 0x01: Status
 
