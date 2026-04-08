@@ -26,7 +26,7 @@
 #include "hal_gpio.h"
 #include "hal_adc.h"
 #include "hal_riic_slave.h"
-#include "hal_riic1_master.h"
+#include "hal_i2c1_bitbang.h"
 #include "hal_timer.h"
 #include "hal_uart.h"
 #include "lib_boot.h"
@@ -333,7 +333,7 @@ static void i2c1_bus_scan(void)
         {
             hal_uart_puts("   ");
         }
-        else if (hal_riic1_master_probe(addr) != 0u)
+        else if (hal_i2c1_bitbang_probe(addr) != 0u)
         {
             /* Device found */
             hal_uart_putc(' ');
@@ -410,9 +410,9 @@ int main(void)
 #endif
 
     /* RIIC1 master init (I2C1 bus: deserializer, touch panel, scan) */
-    hal_riic1_master_init();
+    hal_i2c1_bitbang_init();
 #ifdef DEBUG_ENABLED
-    hal_uart_puts("RIIC1 master ready (100kHz)\n");
+    hal_uart_puts("I2C1 bitbang ready (P8_0/P8_1)\n");
 #endif
 
     /* Enable global interrupts */
