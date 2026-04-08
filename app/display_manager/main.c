@@ -282,14 +282,14 @@ static uint8 on_read(uint16 reg)
 
 /* ---- Display power control ---- */
 
-static volatile uint8 g_cold_boot = 1u;    /* 1 on first boot, 0 after */
-
 static void display_power_on(void)
 {
-    if (g_cold_boot != 0u)
+    static volatile uint8 cold_boot = 1u;   /* 1 on first boot, 0 after */
+
+    if (cold_boot != 0u)
     {
         board_init();       /* Cold boot: port_init + power-on */
-        g_cold_boot = 0u;
+        cold_boot = 0u;
     }
     else
     {
