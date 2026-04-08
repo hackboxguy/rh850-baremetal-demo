@@ -105,6 +105,10 @@
 #define PIN_SPI_CS_PORT         0       /* P0_11: SPI chip select */
 #define PIN_SPI_CS_BIT          11
 
+/* ---- MCU power self-hold ---- */
+#define PIN_UG3V3_EN_PORT       10      /* P10_5: 3.3V self-hold enable */
+#define PIN_UG3V3_EN_BIT        5
+
 /* ---- PCL (power control line) ---- */
 #define PIN_PCL_BIT             4       /* AP0_4: PCL input (LOW=ON, HIGH=OFF) */
 #define PCL_DEBOUNCE_MS         50u     /* Debounce: 50 consecutive same readings */

@@ -149,10 +149,13 @@ static void port_init(void)
     PORTPIBC9 |= 0xFF90u;
 
     /* --- Port P10 --- */
-    /* BIOS: P 10 10 94B3 / P 10 81 4B4C B4B3 / P 10 82 B4B3 0000 / P 10 E0 4B40 */
+    /* BIOS: P 10 10 94B3 / P 10 81 4B4C B4B3 / P 10 82 B4B3 0000 / P 10 E0 4B40
+     * Exclude bit 5 (P10_5 = UG3V3_EN) — already driven HIGH for self-hold.
+     * 0x94B3 & ~0x0020 = 0x9493 (clear mask without bit 5)
+     */
     for (i = 0u; i < 16u; i++)
     {
-        if ((0x94B3u & ((uint16)1u << i)) != 0u)
+        if ((0x9493u & ((uint16)1u << i)) != 0u)
         {
             PORTPSR10 = PSR_CLR(i);
         }
@@ -352,6 +355,11 @@ static void power_main_disable(void)
 
 void board_init(void)
 {
+    /* 0. Assert 3.3V self-hold IMMEDIATELY — before any port config.
+     * PCL from vehicle may be a short pulse; without self-hold the
+     * MCU loses power as soon as the pulse ends. */
+    pin_drive_high(PIN_UG3V3_EN_PORT, PIN_UG3V3_EN_BIT);
+
     /* 1. Configure GPIO port directions and initial levels */
     port_init();
 
@@ -380,10 +388,9 @@ void board_init(void)
 void board_power_down(void)
 {
     /*
-     * Reverse order of board_init steps 8..3.
-     * Main power (step 2: 5V, 3.3V, PMIC) is NOT disabled —
-     * the MCU runs on these rails and must stay powered to
-     * monitor PCL for wake-up.
+     * Reverse order of board_init steps 8..2.
+     * MCU stays powered via UG3V3_EN self-hold (P10_5 = HIGH),
+     * which is asserted at boot and never deasserted.
      */
 
     /* 8. LCD shutdown (assert resets, power off) */
@@ -401,5 +408,7 @@ void board_power_down(void)
     /* 3. FPGA power rails disable */
     power_fpga_disable();
 
-    /* Note: step 2 (power_main_disable) intentionally skipped */
+    /* 2. Main power supplies disable (5V, 3.3V_SW, PMIC).
+     * MCU survives on UG3V3_EN self-hold. */
+    power_main_disable();
 }

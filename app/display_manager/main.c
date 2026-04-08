@@ -284,6 +284,14 @@ int main(void)
     g_pcl_debounce = 0u;
     g_pcl_last = 1u;    /* Assume HIGH (display off) until proven otherwise */
 
+    /*
+     * Assert 3.3V self-hold FIRST — before anything else.
+     * PCL from vehicle may be a short pulse; the MCU must latch
+     * its own power supply before the pulse ends.
+     */
+    hal_gpio_write(PIN_UG3V3_EN_PORT, PIN_UG3V3_EN_BIT, 1);
+    hal_gpio_set_output(PIN_UG3V3_EN_PORT, PIN_UG3V3_EN_BIT);
+
     BOOT_BANNER("display_manager");
 
     /* PLL init */
