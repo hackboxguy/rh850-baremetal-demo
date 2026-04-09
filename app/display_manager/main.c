@@ -58,6 +58,7 @@
 
 /* Page 0x02: Control */
 #define REG_DISP_POWER_CMD  0x0200u     /* Display power command (0=OFF, 1=ON) RW */
+#define REG_LCD_TP_RST      0x0201u     /* Touch panel reset: 0=LOW(assert), 1=HIGH(release) RW */
 
 /* Page 0x03: Debug commands */
 #define REG_DBG_CMD         0x0300u     /* Debug command register */
@@ -293,6 +294,10 @@ static void on_write(uint16 reg, uint8 val)
         DBG_HEX8(g_i2c_power_cmd);
         DBG_PUTS("\n");
         break;
+    case REG_LCD_TP_RST:
+        hal_gpio_write(PIN_LCD_TP_RST_PORT, PIN_LCD_TP_RST_BIT,
+                       (val != 0u) ? 1u : 0u);
+        break;
     case REG_DBG_CMD:
         g_dbg_cmd = val;
         break;
@@ -337,6 +342,7 @@ static uint8 on_read(uint16 reg)
     case REG_BUILD_MINUTE:    return BUILD_MINUTE;
     case REG_DISP_STATE:      return g_disp_state;
     case REG_DISP_POWER_CMD:  return g_i2c_power_cmd;
+    case REG_LCD_TP_RST:      return hal_gpio_read(PIN_LCD_TP_RST_PORT, PIN_LCD_TP_RST_BIT);
     case REG_DBG_CMD:         return g_dbg_cmd;
     case REG_DBG_STATUS:      return g_dbg_status;
     case REG_DBG_I2C_LOG:     return g_dbg_i2c_log;

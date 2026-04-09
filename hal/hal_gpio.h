@@ -21,6 +21,9 @@ void hal_gpio_set_output(uint8 port, uint8 bit);
 /* Write a digital port pin (1=high, 0=low) */
 void hal_gpio_write(uint8 port, uint8 bit, uint8 value);
 
+/* Read a digital port pin. Returns 1 if high, 0 if low. */
+uint8 hal_gpio_read(uint8 port, uint8 bit);
+
 /* Set analog port pins as digital inputs (AP0 only, enables input buffer) */
 void hal_gpio_set_analog_input(uint8 start_bit, uint8 count);
 

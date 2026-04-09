@@ -53,6 +53,22 @@ void hal_gpio_write(uint8 port, uint8 bit, uint8 value)
     }
 }
 
+uint8 hal_gpio_read(uint8 port, uint8 bit)
+{
+    uint16 ppr = 0u;
+
+    switch (port)
+    {
+    case 0:  ppr = PORTPPR0;  break;
+    case 8:  ppr = PORTPPR8;  break;
+    case 9:  ppr = PORTPPR9;  break;
+    case 10: ppr = PORTPPR10; break;
+    case 11: ppr = PORTPPR11; break;
+    default: break;
+    }
+    return ((ppr & ((uint16)1u << bit)) != 0u) ? 1u : 0u;
+}
+
 #ifdef BOARD_DIP_COUNT
 void hal_gpio_set_analog_input(uint8 start_bit, uint8 count)
 {

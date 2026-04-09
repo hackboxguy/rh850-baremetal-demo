@@ -129,7 +129,8 @@ print(f"{ver} built {date} {time}")  # v01.10 built 2026-04-08 17:30
 |---------|------|--------|-------------|
 | `0x0200` | `DISP_POWER_CMD` | RW | Display power command (0x00=OFF, 0x01=ON). REMOTE_DISP only. |
 | `0x0200` | `LED_CONTROL` | RW | LED state (bit0 = P9_6, 1=ON 0=OFF). 983HH only. |
-| `0x0201-0x02FF` | (reserved) | RW | Reserved for: backlight PWM, GPIO outputs, mode select |
+| `0x0201` | `LCD_TP_RST` | RW | Touch panel reset (P0_10): 0=LOW(assert), 1=HIGH(release). REMOTE_DISP only. Read returns actual pin state. |
+| `0x0202-0x02FF` | (reserved) | RW | Reserved for: backlight PWM, LCD_RST, LCD_PON, etc. |
 
 ### Display Power Control (REMOTE_DISP)
 
