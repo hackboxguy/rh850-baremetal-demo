@@ -9,7 +9,7 @@
  * On first boot, waits for PCL=LOW before powering up.
  * PCL transitions are debounced (50ms of stable state required).
  *
- * I2C slave address: 0x50, 16-bit sub-addressing (EEPROM-style).
+ * I2C slave address: 0x66, 16-bit sub-addressing (EEPROM-style).
  * See docs/i2c_register_map.md for protocol spec.
  *
  * Backlight temperature monitoring:

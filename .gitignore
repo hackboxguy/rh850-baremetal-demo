@@ -16,6 +16,9 @@ tmp-sample-code/
 # Licensed/purchased documents (do not commit)
 *.pdf
 
+# External code review artifacts (not part of repo)
+codex-review-*.md
+
 # cppcheck temp files
 cppcheck-addon-ctu-file-list*
 *.ctu-info

@@ -2,7 +2,55 @@
 
 ## Status
 
-**Open** — workaround in place (client-side delay), root cause not yet identified.
+**RESOLVED** — root cause identified and fixed.
+
+## Root Cause
+
+The EE ISR's NACK handler was clearing `NACKF` and resetting state to
+`ST_IDLE` immediately, **without waiting for the STOP condition** that
+the master sends right after NACK. This allowed the next transaction
+to begin while the previous slave-transmit was still being retired
+by the RIIC hardware, leaving the slave in a stale state.
+
+## Fix
+
+In slave-transmit mode (`ST_SENDING_DATA`/`ST_SEND_DONE`), after NACK
+detection:
+1. Read DRR to release SCL
+2. **Poll-wait for STOP condition** (with timeout for safety)
+3. Clear both NACKF and STOP flags atomically
+
+This mirrors the Renesas Smart Configurator slave example pattern.
+See `hal/hal_riic_slave.c` `hal_riic0_isr_ee()` NACK handler.
+
+Additional changes that contributed to the fix:
+- Use `data & 0x01` (received address byte's R/W bit) instead of
+  `CR2.TRS` to determine direction in the address-match handler.
+  This avoids potential confusion from stale TRS state.
+- Disabled general call address (`SER = 0x01` instead of `0x09`) since
+  it was unused by the protocol and widened the match conditions.
+
+## Verification (after fix)
+
+```bash
+# Test 1: only 0x66 matches (no more phantom 0x67/0x68/0x6a)
+i2cdetect -r -y 1
+# Result: 60: ... 66 -- -- ... ✓
+
+# Test 2: rapid 1-byte reads
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  i2ctransfer -y 1 w2@0x66 0x00 0x00 r1@0x66
+done
+# Result: all 10 return 0x01 ✓
+
+# Test 3: disptool i2cscan
+./micropanel/bin/disptool --device=ioc --command=i2cscan
+# Result: works, finds 0x30 and 0x6b ✓
+```
+
+---
+
+## Original Investigation Notes (kept for history)
 
 ## Symptom
 

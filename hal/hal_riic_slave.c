@@ -153,8 +153,8 @@ void hal_riic_slave_init(uint8 slave_addr,
     /* Slave address 0 (7-bit format) */
     RIIC0.SAR0.UINT32 = (uint32)(slave_addr << 1);
 
-    /* Enable slave address 0 + general call */
-    RIIC0.SER.UINT32 = 0x09u;
+    /* Enable slave address 0 only (no general call — not used by protocol) */
+    RIIC0.SER.UINT32 = 0x01u;
 
     /* MR1: CKS divider (board-specific for target I2C speed) */
     RIIC0.MR1.UINT32 = BOARD_I2C_MR1;
@@ -235,13 +235,22 @@ void hal_riic0_isr_ee(void)
 
     if ((sr2 & SR2_NACKF) != 0u)
     {
-        (void)RIIC0.DRR.UINT32;        /* Dummy read */
-        RIIC0.SR2.UINT32 &= ~(uint32)SR2_NACKF;
-        /* Log completed read transaction.
-         * Subtract 1: TI pre-loads one extra byte that master NACKs. */
+        /* Dummy read to release SCL */
+        (void)RIIC0.DRR.UINT32;
+
+        /* Renesas pattern: in slave-transmit mode, wait for STOP before
+         * clearing NACK and STOP atomically. This ensures the previous
+         * transaction is fully retired before the next one can begin. */
         if ((g_slave_state == ST_SENDING_DATA) ||
             (g_slave_state == ST_SEND_DONE))
         {
+            volatile uint32 t = 0x10000u;
+            while (((RIIC0.SR2.UINT32 & SR2_STOP) == 0u) && (t != 0u))
+            {
+                t--;
+            }
+            RIIC0.SR2.UINT32 &= ~(uint32)(SR2_NACKF | SR2_STOP);
+
             bytes_transferred = (g_reg_addr - g_txn_addr) - 1u;
             if (g_riic_slave_dbg_en != 0u)
             {
@@ -252,6 +261,11 @@ void hal_riic0_isr_ee(void)
                 DBG_HEX8((uint8)bytes_transferred);
                 DBG_PUTS(" bytes\n");
             }
+        }
+        else
+        {
+            /* Slave-receive NACK or other: just clear */
+            RIIC0.SR2.UINT32 &= ~(uint32)SR2_NACKF;
         }
         g_slave_state = ST_IDLE;
     }
@@ -292,9 +306,13 @@ void hal_riic0_isr_ri(void)
     if ((sr1 & 0x01u) != 0u)
     {
         RIIC0.SR1.UINT32 &= ~0x01u;    /* Clear AAS0 */
-        data = (uint8)RIIC0.DRR.UINT32; /* Dummy read to release SCL */
+        /* Read DRR which contains the matched slave address byte
+         * (including the R/W bit in bit 0). Use this byte to determine
+         * direction — NOT CR2.TRS, which can hold stale state from the
+         * previous transaction and cause misclassification. */
+        data = (uint8)RIIC0.DRR.UINT32;
 
-        if ((RIIC0.CR2.UINT32 & 0x20u) != 0u)
+        if ((data & 0x01u) != 0u)
         {
             /* Master READ: current-address read (use existing g_reg_addr) */
             uint8 val = 0xFFu;

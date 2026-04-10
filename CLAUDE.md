@@ -109,12 +109,14 @@ rh850-baremetal-demo/
     └── misra_deviations.md    10 formal deviation records (DEV-001 to DEV-010)
 ```
 
-## Known Issues
+## Resolved Issues
 
-**Rapid I2C transaction bug**: Back-to-back single-byte reads return wrong
-data on alternating transactions. Workaround: 10ms delay between rapid I2C
-transactions in client code, or use multi-byte burst reads.
-See `docs/i2c-slave-rapid-transaction-issue.md` for full investigation.
+**Rapid I2C transaction bug** (resolved): Back-to-back single-byte reads
+returned wrong data on alternating transactions. **Root cause**: EE ISR
+NACK handler was returning to IDLE without waiting for STOP, allowing
+the next transaction to overlap with previous transaction retirement.
+**Fix**: Poll-wait for STOP after NACK in slave-transmit mode (Renesas
+SmartConfig pattern). See `docs/i2c-slave-rapid-transaction-issue.md`.
 
 ## Branches
 
@@ -407,6 +409,13 @@ MISRA-safe patterns used throughout:
 18. **ISR debug interleaves with blocking UART**: Ring buffer drain in timer ISR
     outputs bytes between blocking `hal_uart_puts()` calls. Fix: suppress ISR
     debug (`g_riic_slave_dbg_en=0`), drain buffer, then print.
+
+19. **RIIC slave NACK must wait for STOP before retiring transaction**: In
+    slave-transmit mode, the NACK handler must poll-wait for the STOP
+    condition before clearing flags and resetting state to IDLE. Returning
+    to IDLE on NACK alone allows the next transaction to overlap with
+    previous transaction retirement, causing alternating wrong data on
+    rapid back-to-back reads. Mirror the Renesas Smart Configurator pattern.
 
 ## Future Extensions (Planned)
 
