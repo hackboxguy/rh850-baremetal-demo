@@ -377,10 +377,15 @@ void hal_riic0_isr_ri(void)
 
 /*
  * TEI interrupt (ch79): Transmit End
+ *
+ * Fired when the master NACKs the last byte sent by the slave.
+ * The dummy DRR read releases SCL (per Smart Configurator reference).
+ * Hardware auto-clears TEND on next transaction start.
+ * State set to IDLE since the transaction is complete.
  */
 #pragma interrupt hal_riic0_isr_tei(enable=false, channel=79, fpu=true, callt=false)
 void hal_riic0_isr_tei(void)
 {
-    (void)RIIC0.DRR.UINT32;    /* Dummy read */
-    g_slave_state = ST_SENDING_DATA;
+    (void)RIIC0.DRR.UINT32;    /* Dummy read to release SCL */
+    g_slave_state = ST_IDLE;
 }
