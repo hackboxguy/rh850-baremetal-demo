@@ -100,6 +100,7 @@ rh850-baremetal-demo/
 │   └── display_manager/main.c Remote display controller (REMOTE_DISP, PLL)
 └── docs/
     ├── i2c_register_map.md    I2C slave protocol spec (EEPROM-style, 64K addr)
+    ├── i2c-slave-rapid-transaction-issue.md  Open issue: rapid 1-byte reads
     ├── clock_system.md        PLL setup reference
     ├── riic_bringup.md        RIIC0 critical learnings (PBDC, PODC, IER)
     ├── pin_functions.md       Pin mux reference
@@ -107,6 +108,13 @@ rh850-baremetal-demo/
     ├── misra-baseline-report.md         209 → 77 (0 fixable remaining)
     └── misra_deviations.md    10 formal deviation records (DEV-001 to DEV-010)
 ```
+
+## Known Issues
+
+**Rapid I2C transaction bug**: Back-to-back single-byte reads return wrong
+data on alternating transactions. Workaround: 10ms delay between rapid I2C
+transactions in client code, or use multi-byte burst reads.
+See `docs/i2c-slave-rapid-transaction-issue.md` for full investigation.
 
 ## Branches
 
