@@ -23,4 +23,17 @@ uint8 hal_i2c1_bitbang_write(uint8 addr_7bit, const uint8 *data, uint8 len);
 /* Read data from slave. Returns 1 on ACK, 0 on NACK. */
 uint8 hal_i2c1_bitbang_read(uint8 addr_7bit, uint8 *data, uint8 len);
 
+/*
+ * Combined write-then-read with repeated-start (no STOP between phases):
+ *   START + [addr+W] + [wr_data...] + RESTART + [addr+R] + [rd_data...] + STOP
+ *
+ * Used for register-based device reads where the slave does not preserve
+ * the register pointer across STOP conditions.
+ *
+ * Returns 1 on success (all phases ACKed), 0 on NACK or timeout.
+ */
+uint8 hal_i2c1_bitbang_write_read(uint8 addr_7bit,
+                                  const uint8 *wr_data, uint8 wr_len,
+                                  uint8 *rd_data, uint8 rd_len);
+
 #endif /* HAL_I2C1_BITBANG_H */

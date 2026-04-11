@@ -438,21 +438,22 @@ static void bridge_execute(void)
     if (g_bridge_cmd == BRIDGE_CMD_READ)
     {
         /*
-         * I2C read: write register address, then read data.
-         * Sequence: START + [slave+W] + [reg_addr] + RESTART + [slave+R] + [data...] + STOP
+         * I2C register read with repeated-start (no STOP between phases):
+         *   START + [slave+W] + [reg_addr] + RESTART + [slave+R] + [data] + STOP
+         *
+         * Required for slaves that do not preserve the register pointer
+         * across STOP conditions.
          */
-        ok = hal_i2c1_bitbang_write(g_bridge_slave, &g_bridge_reg, 1u);
+        uint8 reg_addr = g_bridge_reg;
+        uint8 tmp[BRIDGE_DATA_SIZE];
+        ok = hal_i2c1_bitbang_write_read(g_bridge_slave,
+                                         &reg_addr, 1u,
+                                         tmp, g_bridge_len);
         if (ok != 0u)
         {
-            /* Cast away volatile for the read call (data copied after) */
-            uint8 tmp[BRIDGE_DATA_SIZE];
-            ok = hal_i2c1_bitbang_read(g_bridge_slave, tmp, g_bridge_len);
-            if (ok != 0u)
+            for (i = 0u; i < g_bridge_len; i++)
             {
-                for (i = 0u; i < g_bridge_len; i++)
-                {
-                    g_bridge_data[i] = tmp[i];
-                }
+                g_bridge_data[i] = tmp[i];
             }
         }
     }

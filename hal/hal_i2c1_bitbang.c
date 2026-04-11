@@ -246,3 +246,64 @@ uint8 hal_i2c1_bitbang_read(uint8 addr_7bit, uint8 *data, uint8 len)
     i2c1_stop();
     return 1u;
 }
+
+/*
+ * Combined write-then-read with repeated-start.
+ * Sequence on the wire (no STOP between write and read phases):
+ *   START + [addr+W] + [wr_data...] + RESTART + [addr+R] + [rd_data...] + STOP
+ *
+ * For bit-banged I2C, RESTART is just a START condition issued without
+ * a preceding STOP — i.e., release SDA high, release SCL high, then drive
+ * SDA low while SCL is still high.
+ */
+uint8 hal_i2c1_bitbang_write_read(uint8 addr_7bit,
+                                  const uint8 *wr_data, uint8 wr_len,
+                                  uint8 *rd_data, uint8 rd_len)
+{
+    uint8 i;
+
+    /* --- WRITE phase --- */
+    i2c1_start();
+
+    if (i2c1_write_byte((uint8)((uint32)addr_7bit << 1)) == 0u)
+    {
+        i2c1_stop();
+        return 0u;
+    }
+
+    for (i = 0u; i < wr_len; i++)
+    {
+        if (i2c1_write_byte(wr_data[i]) == 0u)
+        {
+            i2c1_stop();
+            return 0u;
+        }
+    }
+
+    /* --- REPEATED START (no STOP) ---
+     * Release SDA high, release SCL high, then drive SDA low while
+     * SCL is still high. This generates a START condition that the
+     * slave recognizes as a continuation of the same transaction. */
+    sda1_high();
+    i2c1_delay();
+    scl1_high();
+    i2c1_delay();
+    sda1_low();          /* RESTART: SDA falls while SCL high */
+    i2c1_delay();
+    scl1_low();
+
+    /* --- READ phase --- */
+    if (i2c1_write_byte((uint8)(((uint32)addr_7bit << 1) | 1u)) == 0u)
+    {
+        i2c1_stop();
+        return 0u;
+    }
+
+    for (i = 0u; i < rd_len; i++)
+    {
+        rd_data[i] = i2c1_read_byte((i < (rd_len - 1u)) ? 1u : 0u);
+    }
+
+    i2c1_stop();
+    return 1u;
+}
