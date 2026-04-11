@@ -63,6 +63,7 @@
 #define ST_RECEIVING_DATA   3u
 #define ST_SENDING_DATA     4u
 #define ST_SEND_DONE        5u
+#define ST_SEND_STOP_WAIT   6u  /* TEI seen, waiting for STOP to retire */
 
 static volatile uint8  g_slave_state;
 static volatile uint16 g_reg_addr;      /* 16-bit register address */
@@ -240,9 +241,11 @@ void hal_riic0_isr_ee(void)
 
         /* Renesas pattern: in slave-transmit mode, wait for STOP before
          * clearing NACK and STOP atomically. This ensures the previous
-         * transaction is fully retired before the next one can begin. */
+         * transaction is fully retired before the next one can begin.
+         * Includes ST_SEND_STOP_WAIT in case TEI ran first and set it. */
         if ((g_slave_state == ST_SENDING_DATA) ||
-            (g_slave_state == ST_SEND_DONE))
+            (g_slave_state == ST_SEND_DONE) ||
+            (g_slave_state == ST_SEND_STOP_WAIT))
         {
             volatile uint32 t = 0x10000u;
             while (((RIIC0.SR2.UINT32 & SR2_STOP) == 0u) && (t != 0u))
@@ -398,12 +401,23 @@ void hal_riic0_isr_ri(void)
  *
  * Fired when the master NACKs the last byte sent by the slave.
  * The dummy DRR read releases SCL (per Smart Configurator reference).
- * Hardware auto-clears TEND on next transaction start.
- * State set to IDLE since the transaction is complete.
+ *
+ * IMPORTANT: TEI does NOT retire the transaction to IDLE.
+ * The transaction stays in ST_SEND_STOP_WAIT until the EE ISR observes
+ * the STOP condition. This serializes retirement so that no matter
+ * which order TEI and EE fire, the slave-transmit cleanup path runs
+ * exactly once via the EE STOP-wait branch.
  */
 #pragma interrupt hal_riic0_isr_tei(enable=false, channel=79, fpu=true, callt=false)
 void hal_riic0_isr_tei(void)
 {
     (void)RIIC0.DRR.UINT32;    /* Dummy read to release SCL */
-    g_slave_state = ST_IDLE;
+    /* Only update state if we are still mid-transmit. If the EE ISR
+     * already retired the transaction (state == IDLE), do not stamp
+     * back into a stale state. */
+    if ((g_slave_state == ST_SENDING_DATA) ||
+        (g_slave_state == ST_SEND_DONE))
+    {
+        g_slave_state = ST_SEND_STOP_WAIT;
+    }
 }
