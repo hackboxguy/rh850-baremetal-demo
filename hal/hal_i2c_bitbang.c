@@ -15,6 +15,7 @@
 
 #define SDA_BIT     BOARD_I2C_SDA_BIT
 #define SCL_BIT     BOARD_I2C_SCL_BIT
+#define I2C_MASK    ((uint16)(((uint16)1u << SDA_BIT) | ((uint16)1u << SCL_BIT)))
 
 /* Half-bit delay count (~100 kHz at default 8 MHz clock) */
 #define I2C_DELAY_COUNT  50u
@@ -57,6 +58,22 @@ static void scl_low(void)
 static uint8 sda_read(void)
 {
     return (PORTPPR10 & (uint16)(1u << SDA_BIT)) ? 1u : 0u;
+}
+
+static void i2c_gpio_mode_init(void)
+{
+    /* Force the pins back to plain GPIO before bit-banging.
+     * A short power cycle or a previous RIIC app can leave AF2 selected,
+     * and PM toggling alone does not take ownership back from the peripheral. */
+    PORTPMC10   &= (uint16)~I2C_MASK;
+    PORTPFC10   &= (uint16)~I2C_MASK;
+    PORTPFCE10  &= (uint16)~I2C_MASK;
+    PORTPFCAE10 &= (uint16)~I2C_MASK;
+    PORTPIPC10  &= (uint16)~I2C_MASK;
+    PORT.PBDC10 &= (uint16)~I2C_MASK;
+
+    /* Start released/input until the bit-bang helpers drive a low level. */
+    PORTPM10 |= I2C_MASK;
 }
 
 /* ---- I2C protocol primitives ---- */
@@ -162,12 +179,11 @@ void hal_i2c_bitbang_init(void)
 {
     uint8 i;
 
-    /* Set SDA and SCL as GPIO (not alternate function) */
-    PORTPMCSR10 = PSR_CLR(SDA_BIT);
-    PORTPMCSR10 = PSR_CLR(SCL_BIT);
+    /* Force GPIO ownership before touching the lines. */
+    i2c_gpio_mode_init();
 
     /* Enable input buffer for pin readback */
-    PORTPIBC10 |= (uint16)(((uint16)1u << SDA_BIT) | ((uint16)1u << SCL_BIT));
+    PORTPIBC10 |= I2C_MASK;
 
     /* Release both lines (high via external pull-ups) */
     sda_high();
