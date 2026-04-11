@@ -122,8 +122,9 @@
 #define DISP_ON     1u
 
 static volatile uint8  g_disp_state;
-static volatile uint8  g_pcl_debounce;     /* Debounce counter (ms) */
-static volatile uint8  g_pcl_last;         /* Last stable PCL state */
+static volatile uint8  g_pcl_debounce;     /* Debounce counter (ms) — ISR only */
+static volatile uint8  g_pcl_last;         /* Last sampled PCL state — ISR only */
+static volatile uint8  g_pcl_stable;       /* Debounced stable PCL state (ISR -> main) */
 static volatile uint8  g_i2c_power_cmd;    /* I2C power command: 0=OFF, 1=ON */
 static volatile uint8  g_dbg_cmd;          /* Debug command register */
 static volatile uint8  g_dbg_status;       /* Debug status register */
@@ -252,7 +253,11 @@ static void timer_callback(void)
     (void)hal_uart_drain(8u);
 #endif
 
-    /* ---- PCL debounce (every 1ms tick) ---- */
+    /* ---- PCL debounce (every 1ms tick) ----
+     * Debounce logic runs entirely in this ISR. The main loop reads
+     * only g_pcl_stable, which atomically reflects the most recently
+     * debounced PCL value. This avoids the race where main reads
+     * debounce counter and stable state separately. */
     pcl_now = hal_gpio_read_ap0(PIN_PCL_BIT);
     if (pcl_now != g_pcl_last)
     {
@@ -263,10 +268,15 @@ static void timer_callback(void)
     else if (g_pcl_debounce < PCL_DEBOUNCE_MS)
     {
         g_pcl_debounce++;
+        if (g_pcl_debounce >= PCL_DEBOUNCE_MS)
+        {
+            /* Debounce just completed — publish stable value to main */
+            g_pcl_stable = pcl_now;
+        }
     }
     else
     {
-        /* Debounce complete — no action here, main loop checks state */
+        /* Already debounced and stable — no action */
     }
 
     /* ---- ADC sampling (only when display is ON) ---- */
@@ -581,6 +591,7 @@ int main(void)
     g_disp_state = DISP_OFF;
     g_pcl_debounce = 0u;
     g_pcl_last = 1u;        /* Assume HIGH (display off) until proven otherwise */
+    g_pcl_stable = 1u;      /* Default to HIGH (display off) until debounced */
     g_i2c_power_cmd = 1u;   /* Default ON — display turns on when PCL=LOW */
     g_dbg_cmd = DBG_CMD_NONE;
     g_dbg_status = DBG_STATUS_IDLE;
@@ -650,8 +661,18 @@ int main(void)
     /* Enable global interrupts */
     __EI();
 
-    /* Check PCL at boot — only power up if LOW */
-    if (hal_gpio_read_ap0(PIN_PCL_BIT) == 0u)
+    /* Check PCL at boot — only power up if LOW.
+     * Seed both g_pcl_last and g_pcl_stable so the timer ISR's first
+     * tick already considers PCL stable at the boot value, preventing
+     * the main loop from racing to power off the display we just
+     * powered on. */
+    {
+        uint8 pcl_boot = hal_gpio_read_ap0(PIN_PCL_BIT);
+        g_pcl_last   = pcl_boot;
+        g_pcl_stable = pcl_boot;
+        g_pcl_debounce = PCL_DEBOUNCE_MS;  /* Already debounced */
+    }
+    if (g_pcl_stable == 0u)
     {
 #ifdef DEBUG_ENABLED
         hal_uart_puts("PCL=LOW, powering on\n");
@@ -675,11 +696,13 @@ int main(void)
      */
     for (;;)
     {
-        /* ---- Display power state machine ---- */
-        if (g_pcl_debounce >= PCL_DEBOUNCE_MS)
+        /* ---- Display power state machine ----
+         * g_pcl_stable is published by the timer ISR only after the
+         * debounce window completes. Reading it once here gives a
+         * race-free snapshot. */
         {
             uint8 want_on;
-            want_on = ((g_pcl_last == 0u) && (g_i2c_power_cmd != 0u))
+            want_on = ((g_pcl_stable == 0u) && (g_i2c_power_cmd != 0u))
                       ? 1u : 0u;
 
             if ((g_disp_state == DISP_OFF) && (want_on != 0u))
