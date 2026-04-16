@@ -377,12 +377,51 @@ static uint8 run_profile(const profile_data_t *profile)
 
     for (block_idx = 0u; block_idx < profile->block_count; block_idx++)
     {
-        const init_op_block_t *block = &profile->blocks[block_idx];
+        const init_block_t *block = &profile->blocks[block_idx];
         uint16 op_idx;
 
-        for (op_idx = 0u; op_idx < block->op_count; op_idx++, step_index++)
+        if (block->type == INIT_BLOCK_PACKED_WRITES)
         {
-            const init_op_t *op = &block->ops[op_idx];
+            const uint8 *packed = (const uint8 *)block->data;
+            init_op_t packed_op;
+
+            packed_op.type = INIT_OP_WRITE;
+            packed_op.delay_ms = 0u;
+
+            for (op_idx = 0u; op_idx < block->count; op_idx++, step_index++)
+            {
+                packed_op.dev_addr = packed[0];
+                packed_op.reg_addr = packed[1];
+                packed_op.value = packed[2];
+
+                if (i2c_reg_write(packed_op.dev_addr, packed_op.reg_addr, packed_op.value) == 0u)
+                {
+                    debug_put_failure(step_index, &packed_op);
+                    return 0u;
+                }
+
+                packed += 3;
+            }
+
+            continue;
+        }
+
+        if (block->type != INIT_BLOCK_OPS)
+        {
+            init_op_t invalid_op;
+
+            invalid_op.type = 0xFFu;
+            invalid_op.dev_addr = 0u;
+            invalid_op.reg_addr = 0u;
+            invalid_op.value = 0u;
+            invalid_op.delay_ms = 0u;
+            debug_put_failure(step_index, &invalid_op);
+            return 0u;
+        }
+
+        for (op_idx = 0u; op_idx < block->count; op_idx++, step_index++)
+        {
+            const init_op_t *op = &((const init_op_t *)block->data)[op_idx];
 
             switch (op->type)
             {

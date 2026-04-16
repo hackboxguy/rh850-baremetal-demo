@@ -91,6 +91,7 @@ BIOS_SOURCES = {
 }
 
 RATE_SUFFIXES = ("_10g8", "_6g75")
+MIN_PACKED_WRITE_RUN = 4
 
 
 def write_if_changed(path: Path, data: bytes) -> None:
@@ -414,6 +415,81 @@ def build_source_blocks(resolved_sources):
     return source_blocks
 
 
+def split_block_for_runtime(block_symbol: str, ops):
+    segments = []
+    pending_ops = []
+    idx = 0
+    segment_idx = 0
+
+    while idx < len(ops):
+        op = ops[idx]
+
+        if op[0] == "write":
+            run_start = idx
+            run = []
+
+            while idx < len(ops) and ops[idx][0] == "write":
+                run.append(ops[idx])
+                idx += 1
+
+            if len(run) >= MIN_PACKED_WRITE_RUN:
+                if pending_ops:
+                    segments.append(("ops", f"{block_symbol}_ops{segment_idx}", list(pending_ops), len(pending_ops)))
+                    pending_ops = []
+                    segment_idx += 1
+
+                packed_bytes = []
+                for write_op in run:
+                    packed_bytes.extend([write_op[1], write_op[2], write_op[3]])
+
+                segments.append(("packed_writes", f"{block_symbol}_wr{segment_idx}", packed_bytes, len(run)))
+                segment_idx += 1
+            else:
+                pending_ops.extend(run)
+
+            continue
+
+        pending_ops.append(op)
+        idx += 1
+
+    if pending_ops:
+        segments.append(("ops", f"{block_symbol}_ops{segment_idx}", list(pending_ops), len(pending_ops)))
+
+    return segments
+
+
+def build_runtime_blocks(source_blocks):
+    runtime_blocks = {}
+
+    for source_key in sorted(source_blocks):
+        segments = []
+        for block_symbol, ops in source_blocks[source_key]:
+            segments.extend(split_block_for_runtime(block_symbol, ops))
+        runtime_blocks[source_key] = segments
+
+    return runtime_blocks
+
+
+def flatten_runtime_blocks(runtime_blocks):
+    flattened = {}
+
+    for source_key in sorted(runtime_blocks):
+        ops = []
+        for segment_type, _segment_symbol, payload, _count in runtime_blocks[source_key]:
+            if segment_type == "ops":
+                ops.extend(payload)
+            elif segment_type == "packed_writes":
+                idx = 0
+                while idx < len(payload):
+                    ops.append(("write", payload[idx], payload[idx + 1], payload[idx + 2]))
+                    idx += 3
+            else:
+                raise ValueError(segment_type)
+        flattened[source_key] = ops
+
+    return flattened
+
+
 def render_header(profiles):
     lines = [
         "/*",
@@ -447,9 +523,16 @@ def render_header(profiles):
         "",
         "typedef struct",
         "{",
-        "    const init_op_t *ops;",
-        "    uint16           op_count;",
-        "} init_op_block_t;",
+        "    uint8        type;",
+        "    const void  *data;",
+        "    uint16       count;",
+        "} init_block_t;",
+        "",
+        "typedef enum",
+        "{",
+        "    INIT_BLOCK_OPS = 0u,",
+        "    INIT_BLOCK_PACKED_WRITES = 1u",
+        "} init_block_type_t;",
         "",
         "typedef enum",
         "{",
@@ -465,7 +548,7 @@ def render_header(profiles):
         "typedef struct",
         "{",
         "    const char        *name;",
-        "    const init_op_block_t *blocks;",
+        "    const init_block_t *blocks;",
         "    uint8              block_count;",
         "    const uint8       *edid;",
         "    uint16             edid_len;",
@@ -512,6 +595,8 @@ def render_c(profiles, resolved_sources, corrections_by_profile, profile_edids):
         "#define OP_READ(dev, reg)        { INIT_OP_READ, (dev), (reg), 0u, 0u }",
         "#define OP_DELAY_MS(ms)         { INIT_OP_DELAY_MS, 0u, 0u, 0u, (ms) }",
         "#define OP_LOAD_EDID()          { INIT_OP_LOAD_EDID, 0u, 0u, 0u, 0u }",
+        "#define BLOCK_OPS(ptr, count)   { INIT_BLOCK_OPS, (ptr), (count) }",
+        "#define BLOCK_WRS(ptr, count)   { INIT_BLOCK_PACKED_WRITES, (ptr), (count) }",
         "",
     ])
 
@@ -538,45 +623,62 @@ def render_c(profiles, resolved_sources, corrections_by_profile, profile_edids):
         lines.append("")
 
     source_blocks = build_source_blocks(resolved_sources)
-    unique_blocks = []
-    block_symbol_by_content = {}
+    runtime_blocks = build_runtime_blocks(source_blocks)
+    unique_segments = []
+    segment_symbol_by_content = {}
     source_block_refs = {}
 
-    for source_key in sorted(source_blocks):
+    for source_key in sorted(runtime_blocks):
         refs = []
-        for block_symbol_hint, ops in source_blocks[source_key]:
-            ops_content = tuple(ops)
-            block_symbol = block_symbol_by_content.get(ops_content)
-            if block_symbol is None:
-                block_symbol = block_symbol_hint
-                block_symbol_by_content[ops_content] = block_symbol
-                unique_blocks.append((block_symbol, ops))
-            refs.append((block_symbol, len(ops)))
+        for segment_type, segment_symbol_hint, payload, op_count in runtime_blocks[source_key]:
+            payload_key = (segment_type, tuple(payload))
+            segment_symbol = segment_symbol_by_content.get(payload_key)
+            if segment_symbol is None:
+                segment_symbol = segment_symbol_hint
+                segment_symbol_by_content[payload_key] = segment_symbol
+                unique_segments.append((segment_type, segment_symbol, payload))
+            refs.append((segment_type, segment_symbol, op_count))
         source_block_refs[source_key] = refs
 
-    for block_symbol, ops in unique_blocks:
-        lines.append(f"static const init_op_t {block_symbol}[] =")
-        lines.append("{")
-        for op in ops:
-            if op[0] == "write":
-                lines.append(f"    OP_WRITE(0x{op[1]:02X}u, 0x{op[2]:02X}u, 0x{op[3]:02X}u),")
-            elif op[0] == "read":
-                lines.append(f"    OP_READ(0x{op[1]:02X}u, 0x{op[2]:02X}u),")
-            elif op[0] == "delay":
-                lines.append(f"    OP_DELAY_MS({op[3]}u),")
-            elif op[0] == "load_edid":
-                lines.append("    OP_LOAD_EDID(),")
-            else:
-                raise ValueError(op[0])
-        lines.append("};")
-        lines.append("")
+    for segment_type, segment_symbol, payload in unique_segments:
+        if segment_type == "ops":
+            lines.append(f"static const init_op_t {segment_symbol}[] =")
+            lines.append("{")
+            for op in payload:
+                if op[0] == "write":
+                    lines.append(f"    OP_WRITE(0x{op[1]:02X}u, 0x{op[2]:02X}u, 0x{op[3]:02X}u),")
+                elif op[0] == "read":
+                    lines.append(f"    OP_READ(0x{op[1]:02X}u, 0x{op[2]:02X}u),")
+                elif op[0] == "delay":
+                    lines.append(f"    OP_DELAY_MS({op[3]}u),")
+                elif op[0] == "load_edid":
+                    lines.append("    OP_LOAD_EDID(),")
+                else:
+                    raise ValueError(op[0])
+            lines.append("};")
+            lines.append("")
+        elif segment_type == "packed_writes":
+            lines.append(f"static const uint8 {segment_symbol}[] =")
+            lines.append("{")
+            for start in range(0, len(payload), 12):
+                chunk = ", ".join(f"0x{value:02X}u" for value in payload[start:start + 12])
+                lines.append(f"    {chunk},")
+            lines.append("};")
+            lines.append("")
+        else:
+            raise ValueError(segment_type)
 
     for source_key in sorted(source_block_refs):
         block_list_symbol = f"g_blocks_src_{source_key}"
-        lines.append(f"static const init_op_block_t {block_list_symbol}[] =")
+        lines.append(f"static const init_block_t {block_list_symbol}[] =")
         lines.append("{")
-        for block_symbol, block_len in source_block_refs[source_key]:
-            lines.append(f"    {{ {block_symbol}, {block_len}u }},")
+        for segment_type, segment_symbol, op_count in source_block_refs[source_key]:
+            if segment_type == "ops":
+                lines.append(f"    BLOCK_OPS({segment_symbol}, {op_count}u),")
+            elif segment_type == "packed_writes":
+                lines.append(f"    BLOCK_WRS({segment_symbol}, {op_count}u),")
+            else:
+                raise ValueError(segment_type)
         lines.append("};")
         lines.append("")
 

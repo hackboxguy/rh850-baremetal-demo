@@ -63,6 +63,8 @@ def verify_edid_assets(profiles):
 def verify_source_blocks(resolved_sources):
     success = True
     source_blocks = gen.build_source_blocks(resolved_sources)
+    runtime_blocks = gen.build_runtime_blocks(source_blocks)
+    flattened_runtime = gen.flatten_runtime_blocks(runtime_blocks)
 
     for source_key in sorted(resolved_sources):
         block_refs = source_blocks[source_key]
@@ -76,6 +78,12 @@ def verify_source_blocks(resolved_sources):
             continue
 
         success &= ok(f"{source_key}: block expansion matches flat BIOS stream")
+
+        if flattened_runtime[source_key] != resolved_sources[source_key].ops:
+            success &= fail(f"{source_key}: packed runtime expansion differs from flat BIOS stream")
+            continue
+
+        success &= ok(f"{source_key}: packed runtime expansion matches flat BIOS stream")
 
     return success, source_blocks
 

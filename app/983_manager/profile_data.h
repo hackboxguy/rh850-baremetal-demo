@@ -29,9 +29,16 @@ typedef struct
 
 typedef struct
 {
-    const init_op_t *ops;
-    uint16           op_count;
-} init_op_block_t;
+    uint8        type;
+    const void  *data;
+    uint16       count;
+} init_block_t;
+
+typedef enum
+{
+    INIT_BLOCK_OPS = 0u,
+    INIT_BLOCK_PACKED_WRITES = 1u
+} init_block_type_t;
 
 typedef enum
 {
@@ -53,7 +60,7 @@ typedef enum
 typedef struct
 {
     const char        *name;
-    const init_op_block_t *blocks;
+    const init_block_t *blocks;
     uint8              block_count;
     const uint8       *edid;
     uint16             edid_len;
