@@ -44,6 +44,8 @@
 #define BOARD_I2C_FAST_BRH      0xF4u
 
 /* ---- 983HH power pins ---- */
+#define PIN_DISPLAY_12V_EN_PORT 0xB0u       /* AP0_2 */
+#define PIN_DISPLAY_12V_EN_BIT  2u
 #define PIN_IOC_ON_UG1V8_PORT   0xB0u       /* AP0_5 */
 #define PIN_IOC_ON_UG1V8_BIT    5u
 #define PIN_IOC_ON_UG1V15_PORT  0xB0u       /* AP0_6 */

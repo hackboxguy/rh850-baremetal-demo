@@ -117,12 +117,14 @@ static void port_init(void)
 {
     uint8 bit;
 
-    /* Port AP0: outputs on AP0_5/AP0_6, other pins stay inputs. */
+    /* Port AP0: AP0_2 enables display 12 V, AP0_5/AP0_6 enable main rails. */
+    ap0_write(PIN_DISPLAY_12V_EN_BIT, 1u);
     ap0_write(PIN_IOC_ON_UG1V8_BIT, 0u);
     ap0_write(PIN_IOC_ON_UG1V15_BIT, 0u);
     for (bit = 0u; bit < 16u; bit++)
     {
-        ap0_set_direction(bit, ((bit == PIN_IOC_ON_UG1V8_BIT) ||
+        ap0_set_direction(bit, ((bit == PIN_DISPLAY_12V_EN_BIT) ||
+                                (bit == PIN_IOC_ON_UG1V8_BIT) ||
                                 (bit == PIN_IOC_ON_UG1V15_BIT)) ? 0u : 1u);
     }
 
