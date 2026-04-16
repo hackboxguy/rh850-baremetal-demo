@@ -11,7 +11,8 @@ typedef enum
 {
     INIT_OP_WRITE = 0u,
     INIT_OP_READ = 1u,
-    INIT_OP_DELAY_MS = 2u
+    INIT_OP_DELAY_MS = 2u,
+    INIT_OP_LOAD_EDID = 3u
 } init_op_type_t;
 
 typedef struct
@@ -45,6 +46,8 @@ typedef struct
     const char        *name;
     const init_op_t   *ops;
     uint16             op_count;
+    const uint8       *edid;
+    uint16             edid_len;
 } profile_data_t;
 
 extern const profile_data_t g_profile_data[PROFILE_COUNT];

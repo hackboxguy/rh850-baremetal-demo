@@ -163,52 +163,68 @@ def resolve_profile_ops(spec: ProfileSpec, instructions, labels):
     return ops
 
 
-def fix_edid_checksums(spec: ProfileSpec, ops):
-    corrected = []
-
+def extract_edid_blob(spec: ProfileSpec, ops):
+    extracted_ops = []
+    edid_bytes = []
     idx = 0
-    while idx + 1 < len(ops):
-        op0 = ops[idx]
-        op1 = ops[idx + 1]
-        if (op0[0], op0[1], op0[2], op0[3]) == ("write", 0x18, 0x40, 0x36) and \
-           (op1[0], op1[1], op1[2], op1[3]) == ("write", 0x18, 0x41, 0x00):
-            data_indexes = []
-            data_bytes = []
-            scan = idx + 2
-            while scan < len(ops) and len(data_bytes) < 256:
-                op = ops[scan]
-                if op[0] == "write" and op[1] == 0x18 and op[2] == 0x42:
-                    data_indexes.append(scan)
-                    data_bytes.append(op[3])
-                scan += 1
+    found = False
 
-            if len(data_bytes) != 256:
+    while idx < len(ops):
+        op = ops[idx]
+        if idx + 1 < len(ops) and \
+           (op[0], op[1], op[2], op[3]) == ("write", 0x18, 0x40, 0x36) and \
+           (ops[idx + 1][0], ops[idx + 1][1], ops[idx + 1][2], ops[idx + 1][3]) == ("write", 0x18, 0x41, 0x00):
+            if found:
+                raise ValueError(f"{spec.key}: multiple EDID sequences found")
+
+            scan = idx + 2
+            while scan < len(ops) and len(edid_bytes) < 256:
+                cur = ops[scan]
+                if cur[0] == "write" and cur[1] == 0x18 and cur[2] == 0x42:
+                    edid_bytes.append(cur[3])
+                    scan += 1
+                    continue
+                break
+
+            if len(edid_bytes) != 256:
                 raise ValueError(f"{spec.key}: EDID page sequence incomplete")
 
-            block_count = min(1 + data_bytes[126], len(data_bytes) // 128)
-            for block in range(block_count):
-                start = block * 128
-                end = start + 128
-                checksum = sum(data_bytes[start:end]) & 0xFF
-                if checksum != 0:
-                    new_checksum = (-sum(data_bytes[start:end - 1])) & 0xFF
-                    data_bytes[end - 1] = new_checksum
-                    corrected.append((block, new_checksum))
+            extracted_ops.append(("load_edid", 0, 0, 0))
+            idx = scan
+            found = True
+            continue
 
-            for seq_index, value in zip(data_indexes, data_bytes):
-                kind, dev, reg, _old = ops[seq_index]
-                ops[seq_index] = (kind, dev, reg, value)
-
-            break
-
+        extracted_ops.append(op)
         idx += 1
+
+    return extracted_ops, edid_bytes
+
+
+def fix_edid_checksums(spec: ProfileSpec, edid_bytes):
+    corrected = []
+
+    if not edid_bytes:
+        return corrected
+
+    if (len(edid_bytes) % 128) != 0:
+        raise ValueError(f"{spec.key}: EDID length {len(edid_bytes)} is not block aligned")
+
+    block_count = min(1 + edid_bytes[126], len(edid_bytes) // 128)
+    for block in range(block_count):
+        start = block * 128
+        end = start + 128
+        checksum = sum(edid_bytes[start:end]) & 0xFF
+        if checksum != 0:
+            new_checksum = (-sum(edid_bytes[start:end - 1])) & 0xFF
+            edid_bytes[end - 1] = new_checksum
+            corrected.append((block, new_checksum))
 
     return corrected
 
 
 def emit_c(profiles_with_ops):
     corrected_lines = []
-    for spec, corrections, _ops in profiles_with_ops:
+    for spec, corrections, _ops, _edid_bytes in profiles_with_ops:
         for block, checksum in corrections:
             corrected_lines.append(
                 f" *   {spec.key}: block {block} checksum corrected to 0x{checksum:02X}"
@@ -226,10 +242,21 @@ def emit_c(profiles_with_ops):
         header.extend(corrected_lines)
     header.extend([" */", "", '#include "profile_data.h"', "", "#define OP_WRITE(dev, reg, val)  { INIT_OP_WRITE, (dev), (reg), (val), 0u }",
                    "#define OP_READ(dev, reg)        { INIT_OP_READ, (dev), (reg), 0u, 0u }",
-                   "#define OP_DELAY_MS(ms)         { INIT_OP_DELAY_MS, 0u, 0u, 0u, (ms) }", ""])
+                   "#define OP_DELAY_MS(ms)         { INIT_OP_DELAY_MS, 0u, 0u, 0u, (ms) }",
+                   "#define OP_LOAD_EDID()          { INIT_OP_LOAD_EDID, 0u, 0u, 0u, 0u }", ""])
 
     body = []
-    for spec, _corrections, ops in profiles_with_ops:
+    for spec, _corrections, ops, edid_bytes in profiles_with_ops:
+        if edid_bytes:
+            body.append(f"static const uint8 g_edid_{spec.key}[] =")
+            body.append("{")
+            for start in range(0, len(edid_bytes), 16):
+                chunk = ", ".join(f"0x{value:02X}u" for value in edid_bytes[start:start + 16])
+                body.append(f"    {chunk},")
+            body.append("};")
+            body.append("")
+
+    for spec, _corrections, ops, _edid_bytes in profiles_with_ops:
         body.append(f"static const init_op_t {spec.symbol_name}[] =")
         body.append("{")
         for op in ops:
@@ -239,6 +266,8 @@ def emit_c(profiles_with_ops):
                 body.append(f"    OP_READ(0x{op[1]:02X}u, 0x{op[2]:02X}u),")
             elif op[0] == "delay":
                 body.append(f"    OP_DELAY_MS({op[3]}u),")
+            elif op[0] == "load_edid":
+                body.append("    OP_LOAD_EDID(),")
             else:
                 raise ValueError(op[0])
         body.append("};")
@@ -246,9 +275,11 @@ def emit_c(profiles_with_ops):
 
     body.append("const profile_data_t g_profile_data[PROFILE_COUNT] =")
     body.append("{")
-    for spec, _corrections, _ops in profiles_with_ops:
+    for spec, _corrections, _ops, edid_bytes in profiles_with_ops:
+        edid_ref = f"g_edid_{spec.key}" if edid_bytes else "(const uint8 *)0"
         body.append(f'    {{ "{spec.display_name}", {spec.symbol_name}, '
-                    f'(uint16)(sizeof({spec.symbol_name}) / sizeof({spec.symbol_name}[0])) }},')
+                    f'(uint16)(sizeof({spec.symbol_name}) / sizeof({spec.symbol_name}[0])), '
+                    f'{edid_ref}, {len(edid_bytes)}u }},')
     body.append("};")
     body.append("")
 
@@ -261,8 +292,9 @@ def main():
 
     for spec in PROFILES:
         ops = resolve_profile_ops(spec, instructions, labels)
-        corrections = fix_edid_checksums(spec, ops)
-        profiles_with_ops.append((spec, corrections, ops))
+        ops, edid_bytes = extract_edid_blob(spec, ops)
+        corrections = fix_edid_checksums(spec, edid_bytes)
+        profiles_with_ops.append((spec, corrections, ops, edid_bytes))
 
     emit_c(profiles_with_ops)
 

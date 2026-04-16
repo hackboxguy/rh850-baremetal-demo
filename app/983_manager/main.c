@@ -85,12 +85,12 @@ static void debug_put_profile(const char *name)
 #endif
 }
 
+#ifdef DEBUG_ENABLED
 static void debug_put_i2c_error(void)
 {
-#ifdef DEBUG_ENABLED
     hal_uart_puts(" bb");
-#endif
 }
+#endif
 
 static uint8 map_dev_addr(uint8 dev_addr)
 {
@@ -209,6 +209,37 @@ static uint8 i2c_reg_read_nonfatal(uint8 dev_addr, uint8 reg_addr)
     return value;
 }
 
+static uint8 load_edid(const uint8 *edid, uint16 edid_len)
+{
+    uint16 idx;
+
+    if ((edid == (const uint8 *)0) || (edid_len == 0u))
+    {
+        g_last_i2c_ok = 0u;
+        return 0u;
+    }
+
+    if (i2c_reg_write(0x18u, 0x40u, 0x36u) == 0u)
+    {
+        return 0u;
+    }
+
+    if (i2c_reg_write(0x18u, 0x41u, 0x00u) == 0u)
+    {
+        return 0u;
+    }
+
+    for (idx = 0u; idx < edid_len; idx++)
+    {
+        if (i2c_reg_write(0x18u, 0x42u, edid[idx]) == 0u)
+        {
+            return 0u;
+        }
+    }
+
+    return 1u;
+}
+
 static uint8 detect_serializer_primary_addr(void)
 {
     if (bitbang_probe_addr(0x18u) != 0u)
@@ -259,6 +290,7 @@ static uint8 bitbang_probe_addr(uint8 dev_addr)
     return hal_i2c_bitbang_write(dev_addr, (const uint8 *)0, 0u);
 }
 
+#ifdef DEBUG_ENABLED
 static uint8 bitbang_reg_read_nonfatal(uint8 dev_addr, uint8 reg_addr, uint8 *value)
 {
     if (hal_i2c_bitbang_write(dev_addr, &reg_addr, 1u) == 0u)
@@ -268,6 +300,7 @@ static uint8 bitbang_reg_read_nonfatal(uint8 dev_addr, uint8 reg_addr, uint8 *va
 
     return hal_i2c_bitbang_read(dev_addr, value, 1u);
 }
+#endif
 
 static void bitbang_debug_scan(void)
 {
@@ -329,6 +362,8 @@ static uint8 serializer_probe(void)
     hal_uart_puts("[05]=");
     hal_uart_put_hex8(value);
     hal_uart_puts("\n");
+#else
+    (void)value;
 #endif
 
     return g_last_i2c_ok;
@@ -388,6 +423,14 @@ static uint8 run_profile(const profile_data_t *profile)
 
         case INIT_OP_DELAY_MS:
             delay_ms_postpll(op->delay_ms);
+            break;
+
+        case INIT_OP_LOAD_EDID:
+            if (load_edid(profile->edid, profile->edid_len) == 0u)
+            {
+                debug_put_failure(idx, op);
+                return 0u;
+            }
             break;
 
         default:
