@@ -28,7 +28,7 @@
 #define BOARD_UART_BAUD         115200u
 #define BOARD_UART_AF           1           /* AF1 */
 
-/* ---- I2C (RIIC0 / bit-bang) ---- */
+/* ---- I2C0 (RIIC0 slave / master) ---- */
 #define BOARD_I2C_SDA_PORT      10
 #define BOARD_I2C_SDA_BIT       2
 #define BOARD_I2C_SCL_PORT      10
@@ -38,17 +38,33 @@
 /* ~100 kHz standard mode: CKS=/8 (5 MHz ref) */
 #define BOARD_I2C_MR1           0x30u       /* CKS=/8 */
 #define BOARD_I2C_BRL           0xF7u       /* 0xE0 | 0x17 (23 cycles low) */
+/* ~400 kHz fast mode: CKS=/2 (20 MHz ref), same divider counts as 100 kHz mode */
+#define BOARD_I2C_FAST_MR1      0x10u
+#define BOARD_I2C_FAST_BRL      0xF7u
+#define BOARD_I2C_FAST_BRH      0xF4u
 
-/* ---- LED ---- */
-#define BOARD_LED_PORT          9
-#define BOARD_LED_BIT           6
+/* ---- 983HH power pins ---- */
+#define PIN_IOC_ON_UG1V8_PORT   0xB0u       /* AP0_5 */
+#define PIN_IOC_ON_UG1V8_BIT    5u
+#define PIN_IOC_ON_UG1V15_PORT  0xB0u       /* AP0_6 */
+#define PIN_IOC_ON_UG1V15_BIT   6u
+#define PIN_PDB_PORT            9u          /* P9_6 */
+#define PIN_PDB_BIT             6u
 
 /* ---- DIP switches (AP0_7 through AP0_14) ---- */
 #define BOARD_DIP_PORT_ANALOG   0           /* AP0 */
 #define BOARD_DIP_START_BIT     7
 #define BOARD_DIP_COUNT         8
+#define BOARD_DIP_ACTIVE_LOW    1u
+
+/*
+ * Legacy alias kept only so older demo apps still compile on 983HH.
+ * P9_6 is now the serializer PDB signal, not a user LED.
+ */
+#define BOARD_LED_PORT          PIN_PDB_PORT
+#define BOARD_LED_BIT           PIN_PDB_BIT
 
 /* ---- Board init ---- */
-void board_init(void);
+void board_init(void);         /* Call before PLL init in 983_manager */
 
 #endif /* BOARD_983HH_H */

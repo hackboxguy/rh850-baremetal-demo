@@ -48,7 +48,7 @@ DATA_ADDR  := FEBF0000
 # ---------------------------------------------------------------------------
 # Sources
 # ---------------------------------------------------------------------------
-APP_SRC   := app/$(APP)/main.c
+APP_SRC   := $(wildcard app/$(APP)/*.c)
 BOARD_SRC := board/$(BOARD)/board_init.c
 HAL_SRC   := $(wildcard hal/*.c)
 LIB_SRC   := $(wildcard lib/*.c)
@@ -59,6 +59,7 @@ ALL_C_SRC := $(APP_SRC) $(BOARD_SRC) $(HAL_SRC) $(LIB_SRC)
 # Include paths (absolute, resolved from BUILD_DIR)
 INCLUDES  := -I$(CCRH_DIR)/inc \
              -I$(PROJ_ROOT)/device \
+             -I$(PROJ_ROOT)/app/$(APP) \
              -I$(PROJ_ROOT)/board/$(BOARD) \
              -I$(PROJ_ROOT)/hal \
              -I$(PROJ_ROOT)/lib
@@ -170,7 +171,7 @@ info:
 # ---------------------------------------------------------------------------
 MISRA_ADDON := misra
 MISRA_SRC   := $(wildcard hal/*.c) $(wildcard lib/*.c) \
-               $(wildcard app/*/main.c) $(wildcard board/$(BOARD)/*.c)
+               $(wildcard app/*/*.c) $(wildcard board/$(BOARD)/*.c)
 MISRA_INC   := -I$(PROJ_ROOT)/device -I$(PROJ_ROOT)/board/$(BOARD) \
                -I$(PROJ_ROOT)/hal -I$(PROJ_ROOT)/lib
 
