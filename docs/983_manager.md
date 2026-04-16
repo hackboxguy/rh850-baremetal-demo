@@ -174,7 +174,7 @@ Typical debug output shows:
 
 ```bash
 ./micropanel/bin/flashrh850.sh \
-    --bios-autorun=output/983HH/983_manager/983HH_983_manager.bin \
+    --bios-autorun=output/983HH/983_manager/release/983HH_983_manager.bin \
     --npj=/home/pi/micropanel/share/sp6bins/config/983HH.npj
 ```
 

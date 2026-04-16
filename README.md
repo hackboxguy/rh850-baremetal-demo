@@ -3,6 +3,9 @@
 Modular bare-metal C examples for the Renesas RH850/F1KM-S1 MCU (R7F7016863),
 built with the CC-RH compiler and GNU Make.
 
+New developer on WSL2? Start with [SETUP.md](SETUP.md) before using the quick
+start commands below.
+
 ## Target Hardware
 
 | Item | Value |
@@ -33,7 +36,7 @@ make refresh-983-manager-golden
 
 # Flash the binary (on Raspberry Pi)
 ./micropanel/bin/flashrh850.sh \
-    --bios-autorun=output/983HH/983_manager/983HH_983_manager.bin \
+    --bios-autorun=output/983HH/983_manager/release/983HH_983_manager.bin \
     --npj=/home/pi/micropanel/share/sp6bins/config/983HH.npj
 ```
 
