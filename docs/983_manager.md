@@ -14,6 +14,8 @@ profiles and EDID payloads.
 1. Delay at startup to match the autorun/BOM power-up environment.
 2. Run the shared `983HH` cold-boot sequence in `board/983HH/board_init.c`:
    - configure ports
+   - assert display 12 V enable on `AP0_2`
+   - wait `1 ms`
    - enable `1V8` on `AP0_5`
    - enable `1V15` on `AP0_6`
    - wait `20 ms`
@@ -24,6 +26,8 @@ profiles and EDID payloads.
 6. If the serializer comes up strapped at `0x10`, force its local `DEVICE_ID`
    back to `0x18`.
 7. Read DIP switches, select the generated profile, and execute the init table.
+8. After the init table completes, hand `P10_2/P10_3` over to RIIC0 slave mode
+   at `0x67` for the common status/debug register page.
 
 ## Why Bit-Bang I2C Is Used
 
@@ -34,6 +38,10 @@ This was chosen because it proved robust on the populated `983HH` hardware
 during bring-up, while the RIIC0 path was not needed for the final working
 application. The common `hal_riic_master` infrastructure remains available for
 other apps, but `983_manager` does not depend on it.
+
+After serializer/deserializer bring-up is complete, `983_manager` repurposes
+the same external bus pins (`P10_2/P10_3`) as an RIIC0 slave at address
+`0x67`. At that point the app no longer uses that bus as a master.
 
 ## Serializer Local Address Behavior
 
@@ -183,10 +191,19 @@ Typical debug output shows:
 Expected local bus view after a successful init:
 - serializer at `0x18`
 - deserializer alias at `0x2c`
+- `983_manager` status slave at `0x67`
 
 Useful checks from Raspberry Pi:
 
 ```bash
 i2cdetect -r -y 1
 i2cget -y 1 0x18 0x05 b
+i2ctransfer -y 1 w2@0x67 0x00 0x00 r8@0x67
+i2ctransfer -y 1 w2@0x67 0x03 0x00 r3@0x67
 ```
+
+The `0x67` slave currently exposes:
+- `0x0000-0x0007`: FW version and build date/time
+- `0x0300`: `DBG_CMD` (reserved/readback only for now)
+- `0x0301`: `DBG_STATUS` (`0x00` idle)
+- `0x0302`: `DBG_I2C_LOG` (`0x00` off, `0x01` on)

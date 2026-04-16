@@ -37,6 +37,18 @@ static uint8 bitbang_probe_addr(uint8 dev_addr);
 #define REG_BUILD_HOUR      0x0006u
 #define REG_BUILD_MINUTE    0x0007u
 
+/* Page 0x03: shared debug/status page */
+#define REG_DBG_CMD         0x0300u
+#define REG_DBG_STATUS      0x0301u
+#define REG_DBG_I2C_LOG     0x0302u
+
+#define DBG_CMD_NONE        0x00u
+#define DBG_STATUS_IDLE     0x00u
+
+static volatile uint8 g_dbg_cmd = DBG_CMD_NONE;
+static volatile uint8 g_dbg_status = DBG_STATUS_IDLE;
+static volatile uint8 g_dbg_i2c_log = 0u;
+
 static void delay_ms_prepll(uint32 ms)
 {
     uint32 outer;
@@ -102,8 +114,20 @@ static void debug_put_profile(const char *name)
 
 static void status_on_write(uint16 reg_addr, uint8 value)
 {
-    (void)reg_addr;
-    (void)value;
+    switch (reg_addr)
+    {
+    case REG_DBG_CMD:
+        g_dbg_cmd = value;
+        break;
+
+    case REG_DBG_I2C_LOG:
+        g_dbg_i2c_log = (value != 0u) ? 1u : 0u;
+        g_riic_slave_dbg_en = g_dbg_i2c_log;
+        break;
+
+    default:
+        break;
+    }
 }
 
 static uint8 status_on_read(uint16 reg_addr)
@@ -118,6 +142,9 @@ static uint8 status_on_read(uint16 reg_addr)
     case REG_BUILD_DAY:     return BUILD_DAY;
     case REG_BUILD_HOUR:    return BUILD_HOUR;
     case REG_BUILD_MINUTE:  return BUILD_MINUTE;
+    case REG_DBG_CMD:       return g_dbg_cmd;
+    case REG_DBG_STATUS:    return g_dbg_status;
+    case REG_DBG_I2C_LOG:   return g_dbg_i2c_log;
     default:
         return 0xFFu;
     }
@@ -609,10 +636,13 @@ int main(void)
     /*
      * After serializer/deserializer init is finished, hand the shared
      * external bus on P10_2/P10_3 over to RIIC0 slave mode so the Pi can
-     * query firmware version and build timestamp at address 0x66.
+     * query firmware version and shared debug/status registers at 0x67.
      */
     hal_riic_slave_init(STATUS_SLAVE_ADDR, status_on_write, status_on_read);
-    g_riic_slave_dbg_en = 0u;
+    g_dbg_cmd = DBG_CMD_NONE;
+    g_dbg_status = DBG_STATUS_IDLE;
+    g_dbg_i2c_log = 0u;
+    g_riic_slave_dbg_en = g_dbg_i2c_log;
     __EI();
 
 #ifdef DEBUG_ENABLED

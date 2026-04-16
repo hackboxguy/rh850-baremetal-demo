@@ -142,7 +142,9 @@ SmartConfig pattern). See `docs/i2c-slave-rapid-transaction-issue.md`.
 ## I2C Slave Protocol (16-bit sub-addressing)
 
 EEPROM-style (24C256 compatible). Auto-increment, wraps at 0xFFFF.
-Slave address is board-specific: **0x50** (983HH), **0x66** (REMOTE_DISP).
+Current production-style app addresses:
+- **`983_manager` on 983HH:** `0x67` (available after serializer init completes)
+- **`display_manager` on REMOTE_DISP:** `0x66`
 
 ```
 Write: [ADDR+W] [addr_hi] [addr_lo] [data0] [data1] ...
@@ -154,9 +156,9 @@ Register map (see `docs/i2c_register_map.md` for full spec):
 | Range | Page | Implemented registers |
 |-------|------|-----------------------|
 | `0x0000-0x00FF` | Device Info (RO) | FW version 0x0000-0x0001, build date/time 0x0002-0x0007 |
-| `0x0100-0x01FF` | Status (RO) | Display state at 0x0100, DIP switches (983HH) |
-| `0x0200-0x02FF` | Control (RW) | Display power at 0x0200, LED (983HH) |
-| `0x0300-0x03FF` | Debug (RW) | Cmd, scan buf 0x0380, I2C bridge 0x0310-032F |
+| `0x0100-0x01FF` | Status (RO) | App-specific (`display_manager`: display state at 0x0100) |
+| `0x0200-0x02FF` | Control (RW) | App-specific (`display_manager`: display power / TP reset) |
+| `0x0300-0x03FF` | Debug (RW) | Shared subset `0x0300-0x0302`; `display_manager` extends scan/bridge pages |
 | `0x1000-0x1FFF` | Diagnostics (RO) | Backlight NTC: raw ADC 0x1000-1001, temp 0x1002-1003 |
 | `0xF000-0xFEFF` | Firmware Update | (future: image staging) |
 | `0xFF00-0xFFFF` | Bootloader | (future: update trigger, CRC) |
@@ -170,14 +172,14 @@ Signed 16-bit, 0.1 degC resolution, big-endian:
 ### Pi4 test commands
 
 ```bash
-# --- 983HH (address 0x50) ---
-i2ctransfer -y 1 w2@0x50 0x00 0x00 r2@0x50     # FW version
-i2ctransfer -y 1 w3@0x50 0x02 0x00 0x01        # LED ON
-i2ctransfer -y 1 w3@0x50 0x02 0x00 0x00        # LED OFF
-i2ctransfer -y 1 w2@0x50 0x01 0x00 r1@0x50     # DIP switches
+# --- 983_manager on 983HH (address 0x67) ---
+i2ctransfer -y 1 w2@0x67 0x00 0x00 r8@0x67     # FW version + build timestamp
+i2ctransfer -y 1 w2@0x67 0x03 0x00 r3@0x67     # DBG_CMD, DBG_STATUS, DBG_I2C_LOG
+i2ctransfer -y 1 w3@0x67 0x03 0x02 0x00        # mute slave debug
+i2ctransfer -y 1 w3@0x67 0x03 0x02 0x01        # unmute slave debug
 
 # --- REMOTE_DISP (address 0x66) ---
-i2ctransfer -y 1 w2@0x66 0x00 0x00 r2@0x66     # FW version
+i2ctransfer -y 1 w2@0x66 0x00 0x00 r8@0x66     # FW version + build timestamp
 i2ctransfer -y 1 w3@0x66 0x02 0x00 0x01        # Display ON
 i2ctransfer -y 1 w3@0x66 0x02 0x00 0x00        # Display OFF
 i2ctransfer -y 1 w3@0x66 0x02 0x01 0x00        # Touch panel reset assert
@@ -366,6 +368,9 @@ MISRA-safe patterns used throughout:
 - It uses bit-banged I2C on `P10_2/P10_3` for serializer/deserializer init.
 - On tested hardware the serializer may power up at local address `0x10`; `983_manager`
   detects that and forces the local `DEVICE_ID` back to `0x18` for Linux compatibility.
+- After init completes, it hands `P10_2/P10_3` over to an RIIC0 status slave at `0x67`.
+- The `0x67` slave currently exposes common device-info registers `0x0000-0x0007`
+  and the shared debug page subset `0x0300-0x0302`.
 - Generated profile data is optimized:
   - raw EDID arrays instead of byte-by-byte init ops
   - EDID content dedup across identical payloads

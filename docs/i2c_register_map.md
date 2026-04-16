@@ -9,10 +9,14 @@ applications that expose an I2C slave interface on the RH850 MCU.
 
 | Parameter | Value |
 |-----------|-------|
-| Slave address | Board-specific: 0x50 (983HH), 0x66 (REMOTE_DISP) |
+| Slave address | App-specific: `983_manager` = 0x67, `display_manager` = 0x66 |
 | Sub-addressing | 16-bit (EEPROM-style, 24C256/24C512 compatible) |
-| SCL speed | ~100 kHz (standard mode) |
+| SCL speed | Master-dependent; tested with the current Pi4/Linux tooling |
 | Byte order | Big-endian (address high byte first) |
+
+`i2c_slave` remains a separate demo app on `983HH` and still uses its own
+legacy address/configuration. This document focuses on the production-style
+`983_manager` and `display_manager` applications.
 
 ## Protocol
 
@@ -51,10 +55,10 @@ matching standard EEPROM behavior.
 
 | Address Range | Page | Access | Description |
 |---------------|------|--------|-------------|
-| `0x0000-0x00FF` | Device Info | RO | Firmware version, hardware ID, capabilities |
-| `0x0100-0x01FF` | Status | RO | Live sensor/input readings |
-| `0x0200-0x02FF` | Control | RW | GPIO outputs, mode settings |
-| `0x0300-0x03FF` | Configuration | RW | Persistent settings, thresholds |
+| `0x0000-0x00FF` | Device Info | RO | Common device info page used by both apps |
+| `0x0100-0x01FF` | Status | RO | App-specific live status values |
+| `0x0200-0x02FF` | Control | RW | App-specific control functions |
+| `0x0300-0x03FF` | Debug | RW | Shared debug subset plus app-specific extensions |
 | `0x0400-0x0FFF` | (reserved) | -- | Reserved for future standard pages |
 | `0x1000-0x1FFF` | Diagnostics | RO | Temperature, voltage, error counters |
 | `0x2000-0xEFFF` | (reserved) | -- | Reserved for application-specific use |
@@ -99,8 +103,8 @@ All BCD format — each byte is human-readable in hex.
 
 Read all device info in one shot (8 bytes):
 ```bash
-# 983HH
-i2ctransfer -y 1 w2@0x50 0x00 0x00 r8@0x50
+# 983HH / 983_manager
+i2ctransfer -y 1 w2@0x67 0x00 0x00 r8@0x67
 # REMOTE_DISP
 i2ctransfer -y 1 w2@0x66 0x00 0x00 r8@0x66
 # Example: 0x01 0x10 0x20 0x26 0x04 0x08 0x17 0x30
@@ -116,19 +120,21 @@ time = f"{data[6]:02X}:{data[7]:02X}"
 print(f"{ver} built {date} {time}")  # v01.10 built 2026-04-08 17:30
 ```
 
-## Page 0x01: Status
+## Page 0x01: Status (app-specific)
 
 | Address | Name | Access | Description |
 |---------|------|--------|-------------|
-| `0x0100` | `DIP_SWITCHES` | RO | DIP switch state (bit0=SW1 ... bit7=SW8) |
+| `0x0100` | `DISP_STATE` | RO | Display power state (`display_manager` only, 0=OFF, 1=ON) |
 | `0x0101-0x01FF` | (reserved) | RO | Reserved for: ADC readings, bus status, uptime |
 
-## Page 0x02: Control
+`983_manager` currently does not expose a status-page register in the
+`0x0100-0x01FF` range.
+
+## Page 0x02: Control (app-specific)
 
 | Address | Name | Access | Description |
 |---------|------|--------|-------------|
 | `0x0200` | `DISP_POWER_CMD` | RW | Display power command (0x00=OFF, 0x01=ON). REMOTE_DISP only. |
-| `0x0200` | `LED_CONTROL` | RW | LED state (bit0 = P9_6, 1=ON 0=OFF). 983HH only. |
 | `0x0201` | `LCD_TP_RST` | RW | Touch panel reset (P0_10): 0=LOW(assert), 1=HIGH(release). REMOTE_DISP only. Read returns actual pin state. |
 | `0x0202-0x02FF` | (reserved) | RW | Reserved for: backlight PWM, LCD_RST, LCD_PON, etc. |
 
@@ -145,26 +151,29 @@ Display OFF = (PCL=HIGH) OR (I2C cmd=OFF)
 
 Default I2C power state = ON at boot. Read current state at `0x0100`.
 
-## Page 0x03: Debug Commands (REMOTE_DISP)
+`983_manager` currently does not expose control-page registers in the
+`0x0200-0x02FF` range.
+
+## Page 0x03: Debug / Status
 
 | Address | Name | Access | Description |
 |---------|------|--------|-------------|
-| `0x0300` | `DBG_CMD` | RW | Debug command (see table below) |
-| `0x0301` | `DBG_STATUS` | RO | Command status: 0=idle, 1=running, 2=done |
-| `0x0302` | `DBG_I2C_LOG` | RW | I2C slave debug prints: 0x00=off, 0x01=on (default) |
-| `0x0303` | `SCAN_DEV_COUNT` | RO | Number of I2C1 devices found in last scan |
+| `0x0300` | `DBG_CMD` | RW | Shared debug command register. `983_manager` stores/readbacks it but does not execute commands yet. |
+| `0x0301` | `DBG_STATUS` | RO | Shared debug status register. `983_manager` returns `0x00` (idle). |
+| `0x0302` | `DBG_I2C_LOG` | RW | Shared I2C slave debug control: `0x00`=off, `0x01`=on |
+| `0x0303` | `SCAN_DEV_COUNT` | RO | Number of I2C1 devices found in last scan (`display_manager` only) |
 | `0x0304-0x030F` | (reserved) | | |
-| `0x0310` | `BRIDGE_SLAVE` | RW | I2C bridge: target 7-bit slave address |
-| `0x0311` | `BRIDGE_REG` | RW | I2C bridge: target register address |
-| `0x0312` | `BRIDGE_LEN` | RW | I2C bridge: bytes to read/write (1-16) |
-| `0x0313` | `BRIDGE_CMD` | RW | I2C bridge: 0x00=idle, 0x01=read, 0x02=write |
-| `0x0314` | `BRIDGE_STATUS` | RO | I2C bridge: 0x00=idle, 0x01=run, 0x02=done, 0xFF=error |
+| `0x0310` | `BRIDGE_SLAVE` | RW | I2C bridge: target 7-bit slave address (`display_manager` only) |
+| `0x0311` | `BRIDGE_REG` | RW | I2C bridge: target register address (`display_manager` only) |
+| `0x0312` | `BRIDGE_LEN` | RW | I2C bridge: bytes to read/write (1-16, `display_manager` only) |
+| `0x0313` | `BRIDGE_CMD` | RW | I2C bridge: 0x00=idle, 0x01=read, 0x02=write (`display_manager` only) |
+| `0x0314` | `BRIDGE_STATUS` | RO | I2C bridge status (`display_manager` only) |
 | `0x0315-0x031F` | (reserved) | | |
-| `0x0320-0x032F` | `BRIDGE_DATA` | RW | I2C bridge: 16-byte data buffer |
+| `0x0320-0x032F` | `BRIDGE_DATA` | RW | I2C bridge: 16-byte data buffer (`display_manager` only) |
 | `0x0330-0x037F` | (reserved) | | |
-| `0x0380-0x03FF` | `SCAN_BUFFER` | RO | 128 bytes: scan result per 7-bit address |
+| `0x0380-0x03FF` | `SCAN_BUFFER` | RO | 128 bytes: scan result per 7-bit address (`display_manager` only) |
 
-### Debug Commands (write to 0x0300)
+### Debug Commands (write to 0x0300, `display_manager` only today)
 
 | Value | Name | Description |
 |:-----:|------|-------------|
@@ -231,17 +240,23 @@ for addr in range(0x03, 0x78):
         print(f"  0x{addr:02X} (write=0x{addr*2:02X}, read=0x{addr*2+1:02X})")
 ```
 
-### I2C Slave Debug Control
+### I2C Slave Debug Control (shared `0x0302`)
 
 Controls the R[]/W[] transaction debug prints on the UART terminal.
 Useful for suppressing noise when reading the terminal for other output.
 
 ```bash
-# Disable I2C slave transaction prints
+# Disable I2C slave transaction prints on display_manager
 i2ctransfer -y 1 w3@0x66 0x03 0x02 0x00
 
-# Re-enable
+# Re-enable on display_manager
 i2ctransfer -y 1 w3@0x66 0x03 0x02 0x01
+
+# Disable on 983_manager
+i2ctransfer -y 1 w3@0x67 0x03 0x02 0x00
+
+# Re-enable on 983_manager
+i2ctransfer -y 1 w3@0x67 0x03 0x02 0x01
 ```
 
 ### I2C Bridge (relay to internal I2C1 bus)
@@ -351,7 +366,7 @@ Pi4 Python example:
 ```python
 import struct, subprocess
 raw = subprocess.check_output(
-    ["i2ctransfer", "-y", "1", "w2@0x50", "0x10", "0x02", "r2@0x50"])
+    ["i2ctransfer", "-y", "1", "w2@0x66", "0x10", "0x02", "r2@0x66"])
 val = struct.unpack(">h", bytes([int(x, 16) for x in raw.split()]))[0]
 print(f"Temperature: {val / 10.0:.1f} C")
 ```
@@ -369,40 +384,20 @@ print(f"Temperature: {val / 10.0:.1f} C")
 All examples use `i2ctransfer` (supports 16-bit sub-addressing):
 
 ```bash
-# Read firmware version (2 bytes from 0x0000)
-i2ctransfer -y 1 w2@0x50 0x00 0x00 r2@0x50
-# Example output: 0x01 0x10  -> v1.10
+# --- 983_manager on 983HH (address 0x67, available after init completes) ---
+i2ctransfer -y 1 w2@0x67 0x00 0x00 r8@0x67   # FW + build timestamp
+i2ctransfer -y 1 w2@0x67 0x03 0x00 r3@0x67   # DBG_CMD, DBG_STATUS, DBG_I2C_LOG
+i2ctransfer -y 1 w3@0x67 0x03 0x02 0x01      # Enable RIIC slave debug prints
+i2ctransfer -y 1 w3@0x67 0x03 0x02 0x00      # Disable RIIC slave debug prints
 
-# Read DIP switches (1 byte from 0x0100)
-i2ctransfer -y 1 w2@0x50 0x01 0x00 r1@0x50
-# Example output: 0xfe  -> SW1 off, SW2-8 on
-
-# LED ON (write 0x01 to 0x0200)
-i2ctransfer -y 1 w3@0x50 0x02 0x00 0x01
-
-# LED OFF (write 0x00 to 0x0200)
-i2ctransfer -y 1 w3@0x50 0x02 0x00 0x00
-
-# Read LED state (1 byte from 0x0200)
-i2ctransfer -y 1 w2@0x50 0x02 0x00 r1@0x50
-
-# Bulk read: 16 bytes starting at 0x0000 (device info page)
-i2ctransfer -y 1 w2@0x50 0x00 0x00 r16@0x50
-
-# Current-address read (continues from last address)
-i2ctransfer -y 1 r4@0x50
-
-# Read backlight NTC raw ADC (2 bytes from 0x1000)
-i2ctransfer -y 1 w2@0x50 0x10 0x00 r2@0x50
-# Example output: 0x08 0x00  -> raw ADC = 2048
-
-# Read backlight temperature (2 bytes from 0x1002, signed, /10 for degC)
-i2ctransfer -y 1 w2@0x50 0x10 0x02 r2@0x50
-# Example output: 0x00 0xFD  -> 253 = 25.3 C
-
-# Read all diagnostics at once (4 bytes from 0x1000)
-i2ctransfer -y 1 w2@0x50 0x10 0x00 r4@0x50
-# Example output: 0x08 0x00 0x00 0xFD  -> raw=2048, temp=25.3C
+# --- display_manager on REMOTE_DISP (address 0x66) ---
+i2ctransfer -y 1 w2@0x66 0x00 0x00 r8@0x66   # FW + build timestamp
+i2ctransfer -y 1 w2@0x66 0x01 0x00 r1@0x66   # Display state
+i2ctransfer -y 1 w3@0x66 0x02 0x00 0x01      # Display ON
+i2ctransfer -y 1 w3@0x66 0x02 0x00 0x00      # Display OFF
+i2ctransfer -y 1 w3@0x66 0x02 0x01 0x00      # Touch panel reset assert
+i2ctransfer -y 1 w3@0x66 0x02 0x01 0x01      # Touch panel reset release
+i2ctransfer -y 1 w2@0x66 0x10 0x00 r4@0x66   # Backlight NTC diagnostics
 ```
 
 **Note:** `i2cget`/`i2cset` only support 8-bit sub-addressing and cannot
