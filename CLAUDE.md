@@ -24,6 +24,7 @@ firmware update / bootloader mechanisms.
 make BOARD=983HH APP=983_manager
 make BOARD=983HH APP=983_manager DEBUG=on VERSION=01.01
 make check-983-manager
+make refresh-983-manager-golden
 make BOARD=983HH APP=i2c_slave DEBUG=on VERSION=01.10
 
 # REMOTE_DISP display manager
@@ -99,6 +100,7 @@ rh850-baremetal-demo/
 │   │   ├── profile_data.c     Generated shared init blocks + profile table
 │   │   ├── profile_data.h     Generated block/profile metadata / op types
 │   │   ├── panels.json        Versioned profile manifest
+│   │   ├── golden_reference.json  Committed built-in baseline hashes
 │   │   └── edid/              Versioned EDID binary assets
 │   ├── blink_led/main.c       Legacy LED demo (not for populated 983HH boards)
 │   ├── mirror_dip/main.c      Legacy DIP→LED demo (not for populated 983HH boards)
@@ -109,7 +111,7 @@ rh850-baremetal-demo/
 ├── tools/
 │   ├── gen_983_manager_profiles.py  Generate profile_data.c/.h from BIOS + manifest
 │   ├── add_983_panel.py             Import a new EDID panel asset
-│   └── check_983_manager.py         Verify EDIDs, block expansion, generated outputs
+│   └── check_983_manager.py         Verify EDIDs, block expansion, golden baseline
 └── docs/
     ├── 983_manager.md         983HH serializer manager flow and profile notes
     ├── i2c_register_map.md    I2C slave protocol spec (EEPROM-style, 64K addr)
@@ -377,6 +379,9 @@ MISRA-safe patterns used throughout:
   - EDID asset validity
   - optimized block expansion matches the BIOS-derived flat streams
   - generated `profile_data.c/.h` are up to date
+- `app/983_manager/golden_reference.json` is the committed built-in baseline.
+  It records selector mapping plus EDID/init-stream hashes for the stock
+  profiles, so intentional baseline changes require an explicit refresh.
 
 ## Critical Learnings (Don't Repeat These Mistakes)
 

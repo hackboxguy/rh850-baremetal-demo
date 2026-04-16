@@ -28,6 +28,9 @@ make BOARD=983HH APP=983_manager DEBUG=on
 # Verify generated 983_manager assets and profile equivalence
 make check-983-manager
 
+# Refresh the committed built-in 983_manager golden baseline
+make refresh-983-manager-golden
+
 # Flash the binary (on Raspberry Pi)
 ./micropanel/bin/flashrh850.sh \
     --bios-autorun=output/983HH/983_manager/983HH_983_manager.bin \
@@ -75,6 +78,7 @@ rh850-baremetal-demo/
 │   │   ├── profile_data.h   Generated block/EDID metadata
 │   │   ├── profile_data.c   Generated shared init blocks + profile table
 │   │   ├── panels.json      Versioned profile manifest
+│   │   ├── golden_reference.json  Committed built-in baseline hashes
 │   │   └── edid/            Versioned EDID binary assets
 │   ├── blink_led/main.c
 │   ├── mirror_dip/main.c
@@ -84,7 +88,7 @@ rh850-baremetal-demo/
 ├── tools/
 │   ├── gen_983_manager_profiles.py  Generate profile_data.c/.h from BIOS + manifest
 │   ├── add_983_panel.py             Import a new EDID asset into panels.json
-│   └── check_983_manager.py         Verify EDIDs, block expansion, generated outputs
+│   └── check_983_manager.py         Verify EDIDs, block expansion, golden baseline
 └── docs/                    Reference documentation
     ├── 983_manager.md       983HH display manager flow and profile notes
     └── i2c_register_map.md  I2C slave protocol and register spec
@@ -119,6 +123,7 @@ Current 983HH behavior:
 - detects a serializer strapped at local address `0x10` and forces it back to `0x18` for Linux compatibility
 - uses host-side verification to prove optimized profile blocks still match the
   original BIOS-derived flat init streams
+- uses a committed golden reference to detect unintended built-in profile drift
 
 See [docs/983_manager.md](docs/983_manager.md) for more detail.
 

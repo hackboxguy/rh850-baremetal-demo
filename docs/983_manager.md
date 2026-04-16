@@ -54,10 +54,12 @@ Profiles are generated from:
 - `bios-scripts/bios-ver-11.txt` for the stable base init flows
 - `app/983_manager/panels.json` for the selectable profile manifest
 - `app/983_manager/edid/*.bin` for the actual versioned EDID payloads
+- `app/983_manager/golden_reference.json` for the committed built-in baseline
 
 Generator / tooling:
 - `tools/gen_983_manager_profiles.py`
 - `tools/add_983_panel.py`
+- `tools/check_983_manager.py`
 
 Generated output:
 - `app/983_manager/profile_data.c`
@@ -83,6 +85,12 @@ To verify the generated assets and optimized profile layout without hardware:
 make -C rh850-baremetal-demo check-983-manager
 ```
 
+To intentionally refresh the committed built-in baseline after a reviewed change:
+
+```bash
+make -C rh850-baremetal-demo refresh-983-manager-golden
+```
+
 To add or replace a panel EDID while reusing an existing base profile:
 
 ```bash
@@ -102,6 +110,8 @@ Notes:
 - If an EDID file is missing, the generator bootstraps it from the BIOS-derived default for that base profile.
 - Optimized shared init blocks must expand back to the same flat BIOS-derived op
   stream; `check_983_manager.py` verifies that invariant.
+- `golden_reference.json` is the committed baseline for built-in profiles:
+  selector mapping, EDID hash, and flattened init-stream hash.
 
 Supported combinations currently include:
 - `DIP0` 15.6" 2560x1440, 10.8 Gbps / 6.75 Gbps
@@ -128,6 +138,7 @@ generator work. It checks:
 - every optimized block-based profile expands back to the exact flat op stream
   derived from `bios-ver-11.txt`
 - generated `profile_data.c` and `profile_data.h` are up to date
+- committed `golden_reference.json` still matches the built-in baseline
 
 Typical workflow after changing `panels.json`, EDID assets, or the generator:
 
@@ -135,6 +146,13 @@ Typical workflow after changing `panels.json`, EDID assets, or the generator:
 python3 rh850-baremetal-demo/tools/gen_983_manager_profiles.py
 make -C rh850-baremetal-demo check-983-manager
 make -C rh850-baremetal-demo BOARD=983HH APP=983_manager DEBUG=off VERSION=01.01
+```
+
+If the built-in baseline was intentionally changed and reviewed:
+
+```bash
+make -C rh850-baremetal-demo refresh-983-manager-golden
+make -C rh850-baremetal-demo check-983-manager
 ```
 
 ## Debug Build

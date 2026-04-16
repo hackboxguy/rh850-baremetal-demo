@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "profile_count": 12,
+  "profiles": [
+    {
+      "key": "dip0_10g8",
+      "display_name": "DIP0 15.6in 2560x1440 10.8Gbps",
+      "bios_source": "dip0_10g8",
+      "selector": {
+        "core_mask": 1,
+        "dip7_on": false
+      },
+      "edid_len": 256,
+      "edid_sha256": "e09d17118944923b83d62edcd3ee8564629f25dbac3e63ff07414ea2e5f82885",
+      "flat_op_count": 365,
+      "flat_ops_sha256": "66b8bdfcb0d91bf9e9542758ad25b2a2d94189260cd2f66e91c916837cf9ce0c"
+    },
+    {
+      "key": "dip0_6g75",
+      "display_name": "DIP0 15.6in 2560x1440 6.75Gbps",
+      "bios_source": "dip0_6g75",
+      "selector": {
+        "core_mask": 1,
+        "dip7_on": true
+      },
+      "edid_len": 256,
+      "edid_sha256": "e09d17118944923b83d62edcd3ee8564629f25dbac3e63ff07414ea2e5f82885",
+      "flat_op_count": 365,
+      "flat_ops_sha256": "ce3034e98a441e283fc45af955a07f4941a348ca8cc3162c74db88cf03c40563"
+    },
+    {
+      "key": "dip1",
+      "display_name": "DIP1 14.6in 2560x1440",
+      "bios_source": "dip1",
+      "selector": {
+        "core_mask": 2,
+        "dip7_on": false
+      },
+      "edid_len": 256,
+      "edid_sha256": "3cb8a087d5a2d3571454aeeacdb74f596caac5c40f347c7be6c4244d0217deff",
+      "flat_op_count": 205,
+      "flat_ops_sha256": "9cc0c31e94cf05dc350249fe1d25dc8c78f0cfb1043cbb448e3192ca67440cc0"
+    },
+    {
+      "key": "dip2",
+      "display_name": "DIP2 14.6in 1920x1080",
+      "bios_source": "dip2",
+      "selector": {
+        "core_mask": 4,
+        "dip7_on": false
+      },
+      "edid_len": 256,
+      "edid_sha256": "ae955570558ee37c039827121ce4e2718a4e3d79c42dd0304216c53ed24ad95c",
+      "flat_op_count": 328,
+      "flat_ops_sha256": "f73114eff7ce8e57d1aed9a169f7b1f0cc536f2d00ae81f130eee344ce05b542"
+    },
+    {
+      "key": "dip3_oldi",
+      "display_name": "DIP3 12.3in 1920x720 OLDI",
+      "bios_source": "dip3_oldi",
+      "selector": {
+        "core_mask": 8,
+        "dip7_on": false
+      },
+      "edid_len": 256,
+      "edid_sha256": "b7b5213c663017741503eeb4dd6aaaba682592827ee413decdd0ff1b3e527032",
+      "flat_op_count": 328,
+      "flat_ops_sha256": "775d1494b2b7de3cff9097ffce8f722b3b891957e8318e16f407965ecf316bac"
+    },
+    {
+      "key": "dip4_10g8",
+      "display_name": "DIP4 27in 4032x756 10.8Gbps",
+      "bios_source": "dip4_10g8",
+      "selector": {
+        "core_mask": 16,
+        "dip7_on": false
+      },
+      "edid_len": 256,
+      "edid_sha256": "d18d8c7098cdceb68e702f5905a3d8cc6f5ba686e3793e99b653b2ac9d2829a1",
+      "flat_op_count": 365,
+      "flat_ops_sha256": "869dcd7f9cd17841a90149e696f88d6cd1a66acd3c7098ba7d54cbfa7f3e3949"
+    },
+    {
+      "key": "dip4_6g75",
+      "display_name": "DIP4 27in 4032x756 6.75Gbps",
+      "bios_source": "dip4_6g75",
+      "selector": {
+        "core_mask": 16,
+        "dip7_on": true
+      },
+      "edid_len": 256,
+      "edid_sha256": "d18d8c7098cdceb68e702f5905a3d8cc6f5ba686e3793e99b653b2ac9d2829a1",
+      "flat_op_count": 365,
+      "flat_ops_sha256": "8a3e1efa0a77b3e3142e5feaa3999221aad23d215c8d0d162b0c3f93a216a5b3"
+    },
+    {
+      "key": "dip5",
+      "display_name": "DIP5 17.3in 2880x1620",
+      "bios_source": "dip5",
+      "selector": {
+        "core_mask": 32,
+        "dip7_on": false
+      },
+      "edid_len": 256,
+      "edid_sha256": "ead1eb1733e315e73269a503587a44a75d5a3ec688551f75bbabd73de6c5dced",
+      "flat_op_count": 365,
+      "flat_ops_sha256": "4513bc9e306df2d750dbb01b4b23e2b5daef5238fa3041c0f86f9dcd44a44961"
+    },
+    {
+      "key": "dip0_dip1_10g8",
+      "display_name": "DIP0+DIP1 35.6in 6480x960 10.8Gbps",
+      "bios_source": "dip0_dip1_10g8",
+      "selector": {
+        "core_mask": 3,
+        "dip7_on": false
+      },
+      "edid_len": 256,
+      "edid_sha256": "9583aed9ac5ecc4077b9d3c4a760962eedb6b1fde77511a895f24b72d673d210",
+      "flat_op_count": 398,
+      "flat_ops_sha256": "c38ef101928ba5619a72e95f9478e4ade785a8f43f064f6258f3e1c07f510bdb"
+    },
+    {
+      "key": "dip0_dip1_6g75",
+      "display_name": "DIP0+DIP1 35.6in 6480x960 6.75Gbps",
+      "bios_source": "dip0_dip1_6g75",
+      "selector": {
+        "core_mask": 3,
+        "dip7_on": true
+      },
+      "edid_len": 256,
+      "edid_sha256": "9583aed9ac5ecc4077b9d3c4a760962eedb6b1fde77511a895f24b72d673d210",
+      "flat_op_count": 429,
+      "flat_ops_sha256": "d6efaabe1f88f141c0309f88cf0fd9832dcfdbf88de1b90cd509a656533b0ccf"
+    },
+    {
+      "key": "dip0_dip2_10g8",
+      "display_name": "DIP0+DIP2 12.3in 1920x720 DP 10.8Gbps",
+      "bios_source": "dip0_dip2_10g8",
+      "selector": {
+        "core_mask": 5,
+        "dip7_on": false
+      },
+      "edid_len": 256,
+      "edid_sha256": "fa8382184a1ddfadabc5c928ae57b4bbccf7e16673ef62d6a5576200b959d2fb",
+      "flat_op_count": 380,
+      "flat_ops_sha256": "55ff39d7d22df58ecdb98ccb5c3e0253ea97f537cb12e43015fda06d40e989e6"
+    },
+    {
+      "key": "dip0_dip2_6g75",
+      "display_name": "DIP0+DIP2 12.3in 1920x720 DP 6.75Gbps",
+      "bios_source": "dip0_dip2_6g75",
+      "selector": {
+        "core_mask": 5,
+        "dip7_on": true
+      },
+      "edid_len": 256,
+      "edid_sha256": "fa8382184a1ddfadabc5c928ae57b4bbccf7e16673ef62d6a5576200b959d2fb",
+      "flat_op_count": 389,
+      "flat_ops_sha256": "fbcadbf78474844c341ad2f2a8d25b7c8b28819e8fb3d2d130276378cb61bae7"
+    }
+  ]
+}

@@ -102,7 +102,7 @@ LINK_SECTIONS := RESET/$(RESET_ADDR),EIINTTBL/00000200,.text,.const,.INIT_DSEC.c
 # ---------------------------------------------------------------------------
 # Build rules
 # ---------------------------------------------------------------------------
-.PHONY: all clean clean-all info check-983-manager
+.PHONY: all clean clean-all info check-983-manager refresh-983-manager-golden
 
 all: $(OUT_DIR)/$(TARGET).bin
 
@@ -168,6 +168,9 @@ info:
 
 check-983-manager:
 	python3 tools/check_983_manager.py
+
+refresh-983-manager-golden:
+	python3 tools/check_983_manager.py --refresh-golden
 
 # ---------------------------------------------------------------------------
 # MISRA C static analysis (cppcheck + misra.py addon)
