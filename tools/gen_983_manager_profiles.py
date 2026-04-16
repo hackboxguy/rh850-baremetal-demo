@@ -405,9 +405,21 @@ def emit_c(profiles, resolved_sources, corrections_by_profile, profile_edids):
         "",
     ])
 
+    unique_edids = []
+    edid_symbol_by_bytes = {}
+    profile_edid_symbol = {}
+
     for profile in profiles:
-        edid_bytes = profile_edids[profile.key]
-        lines.append(f"static const uint8 {profile.edid_symbol}[] =")
+        edid_bytes = tuple(profile_edids[profile.key])
+        shared_symbol = edid_symbol_by_bytes.get(edid_bytes)
+        if shared_symbol is None:
+            shared_symbol = profile.edid_symbol
+            edid_symbol_by_bytes[edid_bytes] = shared_symbol
+            unique_edids.append((shared_symbol, edid_bytes))
+        profile_edid_symbol[profile.key] = shared_symbol
+
+    for edid_symbol, edid_bytes in unique_edids:
+        lines.append(f"static const uint8 {edid_symbol}[] =")
         lines.append("{")
         for start in range(0, len(edid_bytes), 16):
             chunk = ", ".join(f"0x{value:02X}u" for value in edid_bytes[start:start + 16])
@@ -460,7 +472,7 @@ def emit_c(profiles, resolved_sources, corrections_by_profile, profile_edids):
         lines.append(
             f'    {{ "{profile.display_name}", {source.ops_symbol}, '
             f'(uint16)(sizeof({source.ops_symbol}) / sizeof({source.ops_symbol}[0])), '
-            f"{profile.edid_symbol}, {len(edid_bytes)}u }},"
+            f"{profile_edid_symbol[profile.key]}, {len(edid_bytes)}u }},"
         )
     lines.extend([
         "};",
