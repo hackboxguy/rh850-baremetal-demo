@@ -1,0 +1,124 @@
+{
+  "profiles": [
+    {
+      "key": "dip0_10g8",
+      "display_name": "DIP0 15.6in 2560x1440 10.8Gbps",
+      "bios_source": "dip0_10g8",
+      "selection": {
+        "core_mask": 1,
+        "dip7_on": false
+      },
+      "edid_bin": "rh850-baremetal-demo/app/983_manager/edid/dip0_10g8.bin"
+    },
+    {
+      "key": "dip0_6g75",
+      "display_name": "DIP0 15.6in 2560x1440 6.75Gbps",
+      "bios_source": "dip0_6g75",
+      "selection": {
+        "core_mask": 1,
+        "dip7_on": true
+      },
+      "edid_bin": "rh850-baremetal-demo/app/983_manager/edid/dip0_6g75.bin"
+    },
+    {
+      "key": "dip1",
+      "display_name": "DIP1 14.6in 2560x1440",
+      "bios_source": "dip1",
+      "selection": {
+        "core_mask": 2,
+        "dip7_on": false
+      },
+      "edid_bin": "rh850-baremetal-demo/app/983_manager/edid/dip1.bin"
+    },
+    {
+      "key": "dip2",
+      "display_name": "DIP2 14.6in 1920x1080",
+      "bios_source": "dip2",
+      "selection": {
+        "core_mask": 4,
+        "dip7_on": false
+      },
+      "edid_bin": "rh850-baremetal-demo/app/983_manager/edid/dip2.bin"
+    },
+    {
+      "key": "dip3_oldi",
+      "display_name": "DIP3 12.3in 1920x720 OLDI",
+      "bios_source": "dip3_oldi",
+      "selection": {
+        "core_mask": 8,
+        "dip7_on": false
+      },
+      "edid_bin": "rh850-baremetal-demo/app/983_manager/edid/dip3_oldi.bin"
+    },
+    {
+      "key": "dip4_10g8",
+      "display_name": "DIP4 27in 4032x756 10.8Gbps",
+      "bios_source": "dip4_10g8",
+      "selection": {
+        "core_mask": 16,
+        "dip7_on": false
+      },
+      "edid_bin": "rh850-baremetal-demo/app/983_manager/edid/dip4_10g8.bin"
+    },
+    {
+      "key": "dip4_6g75",
+      "display_name": "DIP4 27in 4032x756 6.75Gbps",
+      "bios_source": "dip4_6g75",
+      "selection": {
+        "core_mask": 16,
+        "dip7_on": true
+      },
+      "edid_bin": "rh850-baremetal-demo/app/983_manager/edid/dip4_6g75.bin"
+    },
+    {
+      "key": "dip5",
+      "display_name": "DIP5 17.3in 2880x1620",
+      "bios_source": "dip5",
+      "selection": {
+        "core_mask": 32,
+        "dip7_on": false
+      },
+      "edid_bin": "rh850-baremetal-demo/app/983_manager/edid/dip5.bin"
+    },
+    {
+      "key": "dip0_dip1_10g8",
+      "display_name": "DIP0+DIP1 35.6in 6480x960 10.8Gbps",
+      "bios_source": "dip0_dip1_10g8",
+      "selection": {
+        "core_mask": 3,
+        "dip7_on": false
+      },
+      "edid_bin": "rh850-baremetal-demo/app/983_manager/edid/dip0_dip1_10g8.bin"
+    },
+    {
+      "key": "dip0_dip1_6g75",
+      "display_name": "DIP0+DIP1 35.6in 6480x960 6.75Gbps",
+      "bios_source": "dip0_dip1_6g75",
+      "selection": {
+        "core_mask": 3,
+        "dip7_on": true
+      },
+      "edid_bin": "rh850-baremetal-demo/app/983_manager/edid/dip0_dip1_6g75.bin"
+    },
+    {
+      "key": "dip0_dip2_10g8",
+      "display_name": "DIP0+DIP2 12.3in 1920x720 DP 10.8Gbps",
+      "bios_source": "dip0_dip2_10g8",
+      "selection": {
+        "core_mask": 5,
+        "dip7_on": false
+      },
+      "edid_bin": "rh850-baremetal-demo/app/983_manager/edid/dip0_dip2_10g8.bin"
+    },
+    {
+      "key": "dip0_dip2_6g75",
+      "display_name": "DIP0+DIP2 12.3in 1920x720 DP 6.75Gbps",
+      "bios_source": "dip0_dip2_6g75",
+      "selection": {
+        "core_mask": 5,
+        "dip7_on": true
+      },
+      "edid_bin": "rh850-baremetal-demo/app/983_manager/edid/dip0_dip2_6g75.bin"
+    }
+  ]
+}

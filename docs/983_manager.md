@@ -50,18 +50,42 @@ can continue using the expected local serializer address `0x18`.
 
 ## Supported Profiles
 
-Profiles are generated from `bios-scripts/bios-ver-11.txt` by:
+Profiles are generated from:
+- `bios-scripts/bios-ver-11.txt` for the stable base init flows
+- `app/983_manager/panels.json` for the selectable profile manifest
+- `app/983_manager/edid/*.bin` for the actual versioned EDID payloads
+
+Generator / tooling:
 - `tools/gen_983_manager_profiles.py`
+- `tools/add_983_panel.py`
 
 Generated output:
 - `app/983_manager/profile_data.c`
 - `app/983_manager/profile_data.h`
 
-To regenerate after changing `bios-scripts/bios-ver-11.txt`:
+To regenerate after changing the BIOS reference or the profile manifest:
 
 ```bash
 python3 rh850-baremetal-demo/tools/gen_983_manager_profiles.py
 ```
+
+To add or replace a panel EDID while reusing an existing base profile:
+
+```bash
+python3 rh850-baremetal-demo/tools/add_983_panel.py \
+    --key my_panel \
+    --display-name "DIP4 13.3in 1920x720" \
+    --base-profile dip4_10g8 \
+    --edid /path/to/panel.bin \
+    --core-mask 16 \
+    --dip7-on 0 \
+    --generate
+```
+
+Notes:
+- `bios_source` in `panels.json` controls which non-EDID init sequence is reused.
+- The EDID `.bin` files are now part of the `983_manager` source flow and should be versioned.
+- If an EDID file is missing, the generator bootstraps it from the BIOS-derived default for that base profile.
 
 Supported combinations currently include:
 - `DIP0` 15.6" 2560x1440, 10.8 Gbps / 6.75 Gbps

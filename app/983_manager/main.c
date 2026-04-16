@@ -5,8 +5,9 @@
  *   1. Startup delay (matches BIOS script)
  *   2. 983HH port / power bring-up via board_init()
  *   3. PLL init
- *   4. I2C0 fast-mode init + I2C1 bus release
- *   5. Read DIP switches and execute the matching generated profile table
+ *   4. Bit-bang init of bus 1 and shared serializer bus 0
+ *   5. Normalize serializer local address back to 0x18 when needed
+ *   6. Read DIP switches and execute the matching generated profile table
  */
 
 #include "board.h"
@@ -369,36 +370,6 @@ static uint8 serializer_probe(void)
     return g_last_i2c_ok;
 }
 
-static const profile_data_t *select_profile(uint8 dip_on_mask)
-{
-    uint8 core_mask = dip_on_mask & 0x3Fu;
-    uint8 dip7_on = dip_on_mask & 0x80u;
-
-    switch (core_mask)
-    {
-    case 0x01u:
-        return &g_profile_data[(dip7_on != 0u) ? PROFILE_DIP0_6G75 : PROFILE_DIP0_10G8];
-    case 0x02u:
-        return &g_profile_data[PROFILE_DIP1];
-    case 0x04u:
-        return &g_profile_data[PROFILE_DIP2];
-    case 0x08u:
-        return &g_profile_data[PROFILE_DIP3_OLDI];
-    case 0x10u:
-        return &g_profile_data[(dip7_on != 0u) ? PROFILE_DIP4_6G75 : PROFILE_DIP4_10G8];
-    case 0x20u:
-        return &g_profile_data[PROFILE_DIP5];
-    case 0x03u:
-        return &g_profile_data[(dip7_on != 0u) ? PROFILE_DIP0_DIP1_6G75
-                                               : PROFILE_DIP0_DIP1_10G8];
-    case 0x05u:
-        return &g_profile_data[(dip7_on != 0u) ? PROFILE_DIP0_DIP2_6G75
-                                               : PROFILE_DIP0_DIP2_10G8];
-    default:
-        return (const profile_data_t *)0;
-    }
-}
-
 static uint8 run_profile(const profile_data_t *profile)
 {
     uint16 idx;
@@ -515,7 +486,7 @@ int main(void)
     hal_uart_puts("\n");
 #endif
 
-    profile = select_profile(dip_on_mask);
+    profile = profile_select(dip_on_mask);
     if (profile == (const profile_data_t *)0)
     {
 #ifdef DEBUG_ENABLED

@@ -5,6 +5,8 @@ output/
 *.hex
 *.bin
 *.map
+!app/983_manager/edid/
+!app/983_manager/edid/*.bin
 
 # WSL build directories
 /tmp/rh850_*

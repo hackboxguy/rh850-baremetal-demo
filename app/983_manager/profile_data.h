@@ -1,5 +1,8 @@
 /*
- * profile_data.h - Generated profile tables for 983_manager
+ * profile_data.h - generated from panels.json / bios-ver-11.txt
+ *
+ * Do not hand-edit this file. Re-run:
+ *   python3 rh850-baremetal-demo/tools/gen_983_manager_profiles.py
  */
 
 #ifndef APP_983_MANAGER_PROFILE_DATA_H
@@ -27,17 +30,17 @@ typedef struct
 typedef enum
 {
     PROFILE_DIP0_10G8 = 0u,
-    PROFILE_DIP0_6G75,
-    PROFILE_DIP1,
-    PROFILE_DIP2,
-    PROFILE_DIP3_OLDI,
-    PROFILE_DIP4_10G8,
-    PROFILE_DIP4_6G75,
-    PROFILE_DIP5,
-    PROFILE_DIP0_DIP1_10G8,
-    PROFILE_DIP0_DIP1_6G75,
-    PROFILE_DIP0_DIP2_10G8,
-    PROFILE_DIP0_DIP2_6G75,
+    PROFILE_DIP0_6G75 = 1u,
+    PROFILE_DIP1 = 2u,
+    PROFILE_DIP2 = 3u,
+    PROFILE_DIP3_OLDI = 4u,
+    PROFILE_DIP4_10G8 = 5u,
+    PROFILE_DIP4_6G75 = 6u,
+    PROFILE_DIP5 = 7u,
+    PROFILE_DIP0_DIP1_10G8 = 8u,
+    PROFILE_DIP0_DIP1_6G75 = 9u,
+    PROFILE_DIP0_DIP2_10G8 = 10u,
+    PROFILE_DIP0_DIP2_6G75 = 11u,
     PROFILE_COUNT
 } profile_id_t;
 
@@ -51,5 +54,6 @@ typedef struct
 } profile_data_t;
 
 extern const profile_data_t g_profile_data[PROFILE_COUNT];
+const profile_data_t *profile_select(uint8 dip_on_mask);
 
 #endif /* APP_983_MANAGER_PROFILE_DATA_H */
