@@ -15,13 +15,27 @@
 #include "hal_gpio.h"
 #include "hal_i2c_bitbang.h"
 #include "hal_i2c1_bitbang.h"
+#include "hal_riic_slave.h"
 #include "hal_uart.h"
 #include "lib_boot.h"
+#include "lib_buildinfo.h"
 #include "profile_data.h"
 
 static uint8 g_serializer_primary_addr = 0x18u;
 static uint8 g_last_i2c_ok = 1u;
 static uint8 bitbang_probe_addr(uint8 dev_addr);
+
+#define STATUS_SLAVE_ADDR   0x67u
+
+/* Minimal status page (same layout as display_manager page 0x00). */
+#define REG_FW_MAJOR        0x0000u
+#define REG_FW_MINOR        0x0001u
+#define REG_BUILD_YEAR_HI   0x0002u
+#define REG_BUILD_YEAR_LO   0x0003u
+#define REG_BUILD_MONTH     0x0004u
+#define REG_BUILD_DAY       0x0005u
+#define REG_BUILD_HOUR      0x0006u
+#define REG_BUILD_MINUTE    0x0007u
 
 static void delay_ms_prepll(uint32 ms)
 {
@@ -84,6 +98,29 @@ static void debug_put_profile(const char *name)
 #else
     (void)name;
 #endif
+}
+
+static void status_on_write(uint16 reg_addr, uint8 value)
+{
+    (void)reg_addr;
+    (void)value;
+}
+
+static uint8 status_on_read(uint16 reg_addr)
+{
+    switch (reg_addr)
+    {
+    case REG_FW_MAJOR:      return (uint8)FW_VERSION_MAJOR;
+    case REG_FW_MINOR:      return (uint8)FW_VERSION_MINOR;
+    case REG_BUILD_YEAR_HI: return BUILD_YEAR_HI;
+    case REG_BUILD_YEAR_LO: return BUILD_YEAR_LO;
+    case REG_BUILD_MONTH:   return BUILD_MONTH;
+    case REG_BUILD_DAY:     return BUILD_DAY;
+    case REG_BUILD_HOUR:    return BUILD_HOUR;
+    case REG_BUILD_MINUTE:  return BUILD_MINUTE;
+    default:
+        return 0xFFu;
+    }
 }
 
 #ifdef DEBUG_ENABLED
@@ -567,6 +604,21 @@ int main(void)
 
 #ifdef DEBUG_ENABLED
     hal_uart_puts("983_manager init complete\n");
+#endif
+
+    /*
+     * After serializer/deserializer init is finished, hand the shared
+     * external bus on P10_2/P10_3 over to RIIC0 slave mode so the Pi can
+     * query firmware version and build timestamp at address 0x66.
+     */
+    hal_riic_slave_init(STATUS_SLAVE_ADDR, status_on_write, status_on_read);
+    g_riic_slave_dbg_en = 0u;
+    __EI();
+
+#ifdef DEBUG_ENABLED
+    hal_uart_puts("RIIC0 status slave addr=0x");
+    hal_uart_put_hex8(STATUS_SLAVE_ADDR);
+    hal_uart_puts("\n");
 #endif
 
     for (;;)
