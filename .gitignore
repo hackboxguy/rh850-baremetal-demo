@@ -29,3 +29,7 @@ cppcheck-addon-ctu-file-list*
 .vscode/
 *.swp
 *~
+
+# Python cache
+__pycache__/
+*.pyc

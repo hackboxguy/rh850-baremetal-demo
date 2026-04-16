@@ -88,6 +88,8 @@ BIOS_SOURCES = {
     "dip0_dip2_6g75": BiosSourceSpec("dip0_dip2_6g75", ap0_for_on_dips(7, 9, 14)),
 }
 
+RATE_SUFFIXES = ("_10g8", "_6g75")
+
 
 def write_if_changed(path: Path, data: bytes) -> None:
     if path.exists() and path.read_bytes() == data:
@@ -314,6 +316,102 @@ def load_edid_for_profile(profile: ManifestProfile, default_edid: list[int]):
     return edid_bytes, corrections
 
 
+def strip_rate_suffix(source_key: str):
+    for suffix in RATE_SUFFIXES:
+        if source_key.endswith(suffix):
+            return source_key[:-len(suffix)], suffix[1:]
+    return source_key, None
+
+
+def common_prefix_len(lhs, rhs):
+    length = 0
+
+    for left_op, right_op in zip(lhs, rhs):
+        if left_op != right_op:
+            break
+        length += 1
+
+    return length
+
+
+def common_suffix_len(lhs, rhs, prefix_len: int):
+    max_suffix = min(len(lhs), len(rhs)) - prefix_len
+    length = 0
+
+    while length < max_suffix:
+        if lhs[len(lhs) - 1 - length] != rhs[len(rhs) - 1 - length]:
+            break
+        length += 1
+
+    return length
+
+
+def build_source_blocks(resolved_sources):
+    source_blocks = {}
+    rate_pairs = {}
+    used_sources = set()
+
+    for source_key in sorted(resolved_sources):
+        base_key, rate = strip_rate_suffix(source_key)
+        if rate is not None:
+            rate_pairs.setdefault(base_key, {})[rate] = source_key
+
+    for base_key in sorted(rate_pairs):
+        pair = rate_pairs[base_key]
+        key_10g8 = pair.get("10g8")
+        key_6g75 = pair.get("6g75")
+
+        if (key_10g8 is None) or (key_6g75 is None):
+            continue
+
+        ops_10g8 = resolved_sources[key_10g8].ops
+        ops_6g75 = resolved_sources[key_6g75].ops
+        prefix_len = common_prefix_len(ops_10g8, ops_6g75)
+        suffix_len = common_suffix_len(ops_10g8, ops_6g75, prefix_len)
+
+        # Only split when the shared content is material. Small matches are not
+        # worth the extra per-profile block metadata.
+        if (prefix_len + suffix_len) < 32:
+            continue
+
+        end_10g8 = len(ops_10g8) - suffix_len if suffix_len != 0 else len(ops_10g8)
+        end_6g75 = len(ops_6g75) - suffix_len if suffix_len != 0 else len(ops_6g75)
+
+        blocks_10g8 = []
+        blocks_6g75 = []
+
+        if prefix_len != 0:
+            prefix_ops = ops_10g8[:prefix_len]
+            prefix_symbol = f"g_ops_blk_{base_key}_common_pre"
+            blocks_10g8.append((prefix_symbol, prefix_ops))
+            blocks_6g75.append((prefix_symbol, prefix_ops))
+
+        middle_10g8 = ops_10g8[prefix_len:end_10g8]
+        middle_6g75 = ops_6g75[prefix_len:end_6g75]
+        if middle_10g8:
+            blocks_10g8.append((f"g_ops_blk_{key_10g8}_mid", middle_10g8))
+        if middle_6g75:
+            blocks_6g75.append((f"g_ops_blk_{key_6g75}_mid", middle_6g75))
+
+        if suffix_len != 0:
+            suffix_ops = ops_10g8[end_10g8:]
+            suffix_symbol = f"g_ops_blk_{base_key}_common_post"
+            blocks_10g8.append((suffix_symbol, suffix_ops))
+            blocks_6g75.append((suffix_symbol, suffix_ops))
+
+        source_blocks[key_10g8] = blocks_10g8
+        source_blocks[key_6g75] = blocks_6g75
+        used_sources.add(key_10g8)
+        used_sources.add(key_6g75)
+
+    for source_key in sorted(resolved_sources):
+        if source_key in used_sources:
+            continue
+        source_blocks[source_key] = [(f"g_ops_blk_{source_key}", resolved_sources[source_key].ops)]
+
+    return source_blocks
+
+
 def emit_header(profiles):
     lines = [
         "/*",
@@ -345,6 +443,12 @@ def emit_header(profiles):
         "    uint16 delay_ms;",
         "} init_op_t;",
         "",
+        "typedef struct",
+        "{",
+        "    const init_op_t *ops;",
+        "    uint16           op_count;",
+        "} init_op_block_t;",
+        "",
         "typedef enum",
         "{",
     ]
@@ -359,8 +463,8 @@ def emit_header(profiles):
         "typedef struct",
         "{",
         "    const char        *name;",
-        "    const init_op_t   *ops;",
-        "    uint16             op_count;",
+        "    const init_op_block_t *blocks;",
+        "    uint8              block_count;",
         "    const uint8       *edid;",
         "    uint16             edid_len;",
         "} profile_data_t;",
@@ -427,11 +531,27 @@ def emit_c(profiles, resolved_sources, corrections_by_profile, profile_edids):
         lines.append("};")
         lines.append("")
 
-    for source_key in sorted(resolved_sources):
-        source = resolved_sources[source_key]
-        lines.append(f"static const init_op_t {source.ops_symbol}[] =")
+    source_blocks = build_source_blocks(resolved_sources)
+    unique_blocks = []
+    block_symbol_by_content = {}
+    source_block_refs = {}
+
+    for source_key in sorted(source_blocks):
+        refs = []
+        for block_symbol_hint, ops in source_blocks[source_key]:
+            ops_content = tuple(ops)
+            block_symbol = block_symbol_by_content.get(ops_content)
+            if block_symbol is None:
+                block_symbol = block_symbol_hint
+                block_symbol_by_content[ops_content] = block_symbol
+                unique_blocks.append((block_symbol, ops))
+            refs.append((block_symbol, len(ops)))
+        source_block_refs[source_key] = refs
+
+    for block_symbol, ops in unique_blocks:
+        lines.append(f"static const init_op_t {block_symbol}[] =")
         lines.append("{")
-        for op in source.ops:
+        for op in ops:
             if op[0] == "write":
                 lines.append(f"    OP_WRITE(0x{op[1]:02X}u, 0x{op[2]:02X}u, 0x{op[3]:02X}u),")
             elif op[0] == "read":
@@ -442,6 +562,15 @@ def emit_c(profiles, resolved_sources, corrections_by_profile, profile_edids):
                 lines.append("    OP_LOAD_EDID(),")
             else:
                 raise ValueError(op[0])
+        lines.append("};")
+        lines.append("")
+
+    for source_key in sorted(source_block_refs):
+        block_list_symbol = f"g_blocks_src_{source_key}"
+        lines.append(f"static const init_op_block_t {block_list_symbol}[] =")
+        lines.append("{")
+        for block_symbol, block_len in source_block_refs[source_key]:
+            lines.append(f"    {{ {block_symbol}, {block_len}u }},")
         lines.append("};")
         lines.append("")
 
@@ -467,11 +596,12 @@ def emit_c(profiles, resolved_sources, corrections_by_profile, profile_edids):
         "{",
     ])
     for profile in profiles:
-        source = resolved_sources[profile.bios_source]
+        block_list_symbol = f"g_blocks_src_{profile.bios_source}"
+        block_refs = source_block_refs[profile.bios_source]
         edid_bytes = profile_edids[profile.key]
         lines.append(
-            f'    {{ "{profile.display_name}", {source.ops_symbol}, '
-            f'(uint16)(sizeof({source.ops_symbol}) / sizeof({source.ops_symbol}[0])), '
+            f'    {{ "{profile.display_name}", {block_list_symbol}, '
+            f'{len(block_refs)}u, '
             f"{profile_edid_symbol[profile.key]}, {len(edid_bytes)}u }},"
         )
     lines.extend([

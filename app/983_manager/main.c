@@ -372,41 +372,48 @@ static uint8 serializer_probe(void)
 
 static uint8 run_profile(const profile_data_t *profile)
 {
-    uint16 idx;
+    uint16 step_index = 0u;
+    uint8 block_idx;
 
-    for (idx = 0u; idx < profile->op_count; idx++)
+    for (block_idx = 0u; block_idx < profile->block_count; block_idx++)
     {
-        const init_op_t *op = &profile->ops[idx];
+        const init_op_block_t *block = &profile->blocks[block_idx];
+        uint16 op_idx;
 
-        switch (op->type)
+        for (op_idx = 0u; op_idx < block->op_count; op_idx++, step_index++)
         {
-        case INIT_OP_WRITE:
-            if (i2c_reg_write(op->dev_addr, op->reg_addr, op->value) == 0u)
+            const init_op_t *op = &block->ops[op_idx];
+
+            switch (op->type)
             {
-                debug_put_failure(idx, op);
+            case INIT_OP_WRITE:
+                if (i2c_reg_write(op->dev_addr, op->reg_addr, op->value) == 0u)
+                {
+                    debug_put_failure(step_index, op);
+                    return 0u;
+                }
+                break;
+
+            case INIT_OP_READ:
+                (void)i2c_reg_read_nonfatal(op->dev_addr, op->reg_addr);
+                break;
+
+            case INIT_OP_DELAY_MS:
+                delay_ms_postpll(op->delay_ms);
+                break;
+
+            case INIT_OP_LOAD_EDID:
+                if (load_edid(profile->edid, profile->edid_len) == 0u)
+                {
+                    debug_put_failure(step_index, op);
+                    return 0u;
+                }
+                break;
+
+            default:
+                debug_put_failure(step_index, op);
                 return 0u;
             }
-            break;
-
-        case INIT_OP_READ:
-            (void)i2c_reg_read_nonfatal(op->dev_addr, op->reg_addr);
-            break;
-
-        case INIT_OP_DELAY_MS:
-            delay_ms_postpll(op->delay_ms);
-            break;
-
-        case INIT_OP_LOAD_EDID:
-            if (load_edid(profile->edid, profile->edid_len) == 0u)
-            {
-                debug_put_failure(idx, op);
-                return 0u;
-            }
-            break;
-
-        default:
-            debug_put_failure(idx, op);
-            return 0u;
         }
     }
 

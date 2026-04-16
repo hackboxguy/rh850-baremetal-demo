@@ -27,6 +27,12 @@ typedef struct
     uint16 delay_ms;
 } init_op_t;
 
+typedef struct
+{
+    const init_op_t *ops;
+    uint16           op_count;
+} init_op_block_t;
+
 typedef enum
 {
     PROFILE_DIP0_10G8 = 0u,
@@ -47,8 +53,8 @@ typedef enum
 typedef struct
 {
     const char        *name;
-    const init_op_t   *ops;
-    uint16             op_count;
+    const init_op_block_t *blocks;
+    uint8              block_count;
     const uint8       *edid;
     uint16             edid_len;
 } profile_data_t;
