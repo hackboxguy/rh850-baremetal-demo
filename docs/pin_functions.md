@@ -14,7 +14,7 @@
 
 | Pin | Function | AF | Notes |
 |-----|----------|:--:|-------|
-| P9_6 | LED | GPIO | Active high, direct drive |
+| P9_6 | Serializer PDB | GPIO | Active high enable for DS90UH983 power-down pin |
 | AP0_7 | DIP switch 1 | GPIO | Needs APIBC enable |
 | AP0_8-14 | DIP switch 2-8 | GPIO | Needs APIBC enable |
 | P0_13 | RLIN32 RX | AF1 | Debug UART input |

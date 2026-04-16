@@ -28,8 +28,11 @@ automatically copied there during the build.
 ## Building
 
 ```bash
-# Simple LED blink (no PLL, no UART)
-make BOARD=983HH APP=blink_led
+# 983HH display manager (recommended)
+make BOARD=983HH APP=983_manager
+
+# 983HH display manager with debug UART
+make BOARD=983HH APP=983_manager DEBUG=on
 
 # I2C slave with debug prints
 make BOARD=983HH APP=i2c_slave DEBUG=on
@@ -53,7 +56,7 @@ Build outputs go to `output/<BOARD>/<APP>/`:
 
 ```bash
 ./micropanel/bin/flashrh850.sh \
-    --bios-autorun=output/983HH/blink_led/983HH_blink_led.bin \
+    --bios-autorun=output/983HH/983_manager/983HH_983_manager.bin \
     --npj=/home/pi/micropanel/share/sp6bins/config/983HH.npj
 ```
 
@@ -65,6 +68,10 @@ The flash script handles:
 
 **Warning:** `--bios-autorun` replaces the BIOS in flash. Re-flash the
 original BIOS to restore normal scripting/autorun functionality.
+
+For the populated `983HH` serializer board, prefer `983_manager` over the older
+`blink_led` / `mirror_dip` demos. `P9_6` is the serializer `PDB` pin on the
+production board and should not be treated as a harmless user LED.
 
 ### Flash Configuration
 
