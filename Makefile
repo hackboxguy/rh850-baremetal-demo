@@ -102,7 +102,7 @@ LINK_SECTIONS := RESET/$(RESET_ADDR),EIINTTBL/00000200,.text,.const,.INIT_DSEC.c
 # ---------------------------------------------------------------------------
 # Build rules
 # ---------------------------------------------------------------------------
-.PHONY: all clean clean-all info
+.PHONY: all clean clean-all info check-983-manager
 
 all: $(OUT_DIR)/$(TARGET).bin
 
@@ -165,6 +165,9 @@ info:
 	@echo "Objects    = $(notdir $(ALL_OBJS))"
 	@echo "BUILD_DIR  = $(BUILD_DIR)"
 	@echo "OUT_DIR    = $(OUT_DIR)"
+
+check-983-manager:
+	python3 tools/check_983_manager.py
 
 # ---------------------------------------------------------------------------
 # MISRA C static analysis (cppcheck + misra.py addon)

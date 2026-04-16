@@ -25,6 +25,9 @@ make BOARD=983HH APP=983_manager
 # Build 983_manager with debug output
 make BOARD=983HH APP=983_manager DEBUG=on
 
+# Verify generated 983_manager assets and profile equivalence
+make check-983-manager
+
 # Flash the binary (on Raspberry Pi)
 ./micropanel/bin/flashrh850.sh \
     --bios-autorun=output/983HH/983_manager/983HH_983_manager.bin \
@@ -69,13 +72,19 @@ rh850-baremetal-demo/
 ├── app/                     Application examples
 │   ├── 983_manager/         BIOS-script port for 983HH display bring-up
 │   │   ├── main.c           Runtime: DIP decode, serializer address force, init execution
-│   │   ├── profile_data.h   Generated profile op types / metadata
-│   │   └── profile_data.c   Generated op tables from bios-ver-11.txt
+│   │   ├── profile_data.h   Generated block/EDID metadata
+│   │   ├── profile_data.c   Generated shared init blocks + profile table
+│   │   ├── panels.json      Versioned profile manifest
+│   │   └── edid/            Versioned EDID binary assets
 │   ├── blink_led/main.c
 │   ├── mirror_dip/main.c
 │   ├── i2c_bitbang/main.c
 │   ├── i2c_master_pcf8574/main.c
 │   └── i2c_slave/main.c
+├── tools/
+│   ├── gen_983_manager_profiles.py  Generate profile_data.c/.h from BIOS + manifest
+│   ├── add_983_panel.py             Import a new EDID asset into panels.json
+│   └── check_983_manager.py         Verify EDIDs, block expansion, generated outputs
 └── docs/                    Reference documentation
     ├── 983_manager.md       983HH display manager flow and profile notes
     └── i2c_register_map.md  I2C slave protocol and register spec
@@ -105,9 +114,11 @@ power-up sequence and all supported `bios-ver-11.txt` display profiles into C.
 Current 983HH behavior:
 - uses `board/983HH/board_init.c` to enable `1V8`, `1V15`, wait `20 ms`, then assert `PDB`
 - uses bit-banged I2C on `P10_2/P10_3` for the serializer/deserializer init path
-- supports all DIP/EDID profiles emitted into generated `profile_data.c`
+- supports all DIP/EDID profiles emitted into generated shared block/EDID tables
 - fixes known bad EDID checksums during profile generation
 - detects a serializer strapped at local address `0x10` and forces it back to `0x18` for Linux compatibility
+- uses host-side verification to prove optimized profile blocks still match the
+  original BIOS-derived flat init streams
 
 See [docs/983_manager.md](docs/983_manager.md) for more detail.
 

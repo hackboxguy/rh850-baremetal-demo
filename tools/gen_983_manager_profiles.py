@@ -6,6 +6,8 @@ Runtime model:
   - board / power init remains handwritten C
   - non-EDID register traffic comes from a BIOS-derived base profile
   - EDID payloads come from versioned .bin files under app/983_manager/edid/
+  - identical EDID payloads are emitted once and shared across profiles
+  - related profiles may share common init-op blocks in generated data
   - the generated selector table maps DIP state to the desired profile
 
 If an EDID binary is missing for a manifest entry, this script bootstraps it
@@ -412,7 +414,7 @@ def build_source_blocks(resolved_sources):
     return source_blocks
 
 
-def emit_header(profiles):
+def render_header(profiles):
     lines = [
         "/*",
         " * profile_data.h - generated from panels.json / bios-ver-11.txt",
@@ -476,10 +478,14 @@ def emit_header(profiles):
         "",
     ])
 
-    write_text_if_changed(OUT_H_PATH, "\n".join(lines))
+    return "\n".join(lines)
 
 
-def emit_c(profiles, resolved_sources, corrections_by_profile, profile_edids):
+def emit_header(profiles):
+    write_text_if_changed(OUT_H_PATH, render_header(profiles))
+
+
+def render_c(profiles, resolved_sources, corrections_by_profile, profile_edids):
     corrected_lines = []
     for profile in profiles:
         for block, checksum in corrections_by_profile[profile.key]:
@@ -627,7 +633,11 @@ def emit_c(profiles, resolved_sources, corrections_by_profile, profile_edids):
         "",
     ])
 
-    write_text_if_changed(OUT_C_PATH, "\n".join(lines))
+    return "\n".join(lines)
+
+
+def emit_c(profiles, resolved_sources, corrections_by_profile, profile_edids):
+    write_text_if_changed(OUT_C_PATH, render_c(profiles, resolved_sources, corrections_by_profile, profile_edids))
 
 def main():
     profiles = load_manifest()

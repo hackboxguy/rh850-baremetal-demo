@@ -63,10 +63,24 @@ Generated output:
 - `app/983_manager/profile_data.c`
 - `app/983_manager/profile_data.h`
 
+Current generated-data model:
+- EDID payloads are stored as raw `uint8` arrays instead of byte-by-byte init ops.
+- Identical EDID blobs are emitted once and shared across multiple profiles.
+- Non-EDID init traffic is stored as shared init-op blocks, not one large flat
+  array per profile.
+- Each profile now references a small list of shared blocks plus its EDID
+  payload.
+
 To regenerate after changing the BIOS reference or the profile manifest:
 
 ```bash
 python3 rh850-baremetal-demo/tools/gen_983_manager_profiles.py
+```
+
+To verify the generated assets and optimized profile layout without hardware:
+
+```bash
+make -C rh850-baremetal-demo check-983-manager
 ```
 
 To add or replace a panel EDID while reusing an existing base profile:
@@ -86,6 +100,8 @@ Notes:
 - `bios_source` in `panels.json` controls which non-EDID init sequence is reused.
 - The EDID `.bin` files are now part of the `983_manager` source flow and should be versioned.
 - If an EDID file is missing, the generator bootstraps it from the BIOS-derived default for that base profile.
+- Optimized shared init blocks must expand back to the same flat BIOS-derived op
+  stream; `check_983_manager.py` verifies that invariant.
 
 Supported combinations currently include:
 - `DIP0` 15.6" 2560x1440, 10.8 Gbps / 6.75 Gbps
@@ -102,6 +118,24 @@ Supported combinations currently include:
 The generator fixes known bad EDID checksums found in the source BIOS script,
 so the emitted C profile tables may intentionally differ from the raw script
 where the script contained an invalid checksum byte.
+
+## Verification
+
+`tools/check_983_manager.py` is the host-side regression tool for profile and
+generator work. It checks:
+- `panels.json` loads cleanly and selector uniqueness still holds
+- every versioned EDID `.bin` exists and has valid per-block checksums
+- every optimized block-based profile expands back to the exact flat op stream
+  derived from `bios-ver-11.txt`
+- generated `profile_data.c` and `profile_data.h` are up to date
+
+Typical workflow after changing `panels.json`, EDID assets, or the generator:
+
+```bash
+python3 rh850-baremetal-demo/tools/gen_983_manager_profiles.py
+make -C rh850-baremetal-demo check-983-manager
+make -C rh850-baremetal-demo BOARD=983HH APP=983_manager DEBUG=off VERSION=01.01
+```
 
 ## Debug Build
 
